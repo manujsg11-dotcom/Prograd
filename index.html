@@ -102,7 +102,7 @@ function migrate(notes){
 const dlSets=t=>Math.max(1,Math.round(t.s/2));
 const startDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(b.type!=='exercise'||!b.tgt||b.dl)return b;ch=true;const kg=Math.max(0,...b.sets.map(x=>N(x.kg))),nk=kg>0?fN(toInc(kg*0.9,b.tgt.inc||1)):'';return{...b,dl:{sets:b.sets.map(x=>({...x,done:false,doneAt:null}))},sets:Array.from({length:dlSets(b.tgt)},()=>mkSet(nk,''))}});return ch?{...n,blocks,updated:Date.now()}:n};
 const endDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(!b.dl)return b;ch=true;const{dl,...r}=b;return{...r,sets:dl.sets.map(x=>({...x,done:false,doneAt:null}))}});return ch?{...n,blocks,updated:Date.now()}:n};
-const CFG0={v:0,plan:'A',deload:0,lastDeload:0,lastExport:0,at:0};
+const CFG0={v:0,plan:'A',pins:null,pinSel:'',deload:0,lastDeload:0,lastExport:0,at:0};
 const loadCfg=()=>{try{const c=JSON.parse(localStorage.getItem('gym-cfg')||'null');if(c&&typeof c==='object')return{...CFG0,...c}}catch(e){}return{...CFG0}};
 const loadMeas=()=>{try{const m=JSON.parse(localStorage.getItem('gym-meas')||'[]');if(Array.isArray(m))return m}catch(e){}return[]};
 let SEEDMAP={};
@@ -488,21 +488,27 @@ function ProgCard({notes,open,cfg,onStartDl,onEndDl}){
  </div>`;
 }
 
-/* ===== Qué día toca (orden rotatorio) ===== */
-function NextCard({notes,cfg,setPlan,open}){
- const plan=PLANS[cfg.plan]?cfg.plan:'A',ds=notes.filter(n=>n.plan===plan).sort((a,b)=>a.day-b.day);
+/* ===== Qué día toca (rutinas ancladas arriba) ===== */
+const pinTags=(notes,cfg)=>{const have=new Set(notes.flatMap(n=>n.tags||[]));return(Array.isArray(cfg.pins)?cfg.pins:['Rutina A','Rutina C']).filter(t=>have.has(t))};
+const dayKey=n=>n.day!=null?n.day:n.created!=null?n.created:(n.updated||0);
+function NextCard({notes,cfg,setSel,open}){
+ const pins=pinTags(notes,cfg);
+ if(!pins.length)return null;
+ const want=cfg.pinSel||(cfg.plan?'Rutina '+cfg.plan:''),tag=pins.includes(want)?want:pins[0];
+ const ofTag=t=>notes.filter(n=>(n.tags||[]).includes(t)).sort((a,b)=>dayKey(a)-dayKey(b));
+ const ds=ofTag(tag),short=t=>t.replace(/^Rutina /,''),cnt=t=>{const c=ofTag(t).length;return c+(c===1?' día':' días')};
  const lastT=n=>{const h=(n.hist||[]).filter(x=>!x.demo);return h.length?h[h.length-1].t:0};
  let li=-1,lt=0;ds.forEach((n,i)=>{const t=lastT(n);if(t>lt){lt=t;li=i}});
  const cur=ds.find(n=>n.blocks.some(b=>(b.sets||[]).some(x=>x.done))),nx=cur||ds[(li+1)%Math.max(1,ds.length)];
- const nEx=nx?nx.blocks.filter(b=>b.type==='exercise').length:0;
+ const ix=Math.max(0,ds.indexOf(nx)),nEx=nx?nx.blocks.filter(b=>b.type==='exercise').length:0;
  return html`<div className="card p-4">
   <div className="flex items-center justify-between gap-2 mb-3"><span className="text-sm mut">${cur?'En curso':'Hoy toca'}</span>
-   <div className="chip flex rounded-full p-0.5">${Object.keys(PLANS).map(k=>html`<button key=${k} onClick=${()=>setPlan(k)} className=${'h-8 px-3 rounded-full text-xs '+(plan===k?'bg-neutral-200 text-black font-semibold':'mut')}>${k} · ${PLANS[k].sub}</button>`)}</div></div>
-  ${nx?html`<div className="pop-in" key=${nx.id}><div className="text-2xl font-bold leading-tight">${nx.title}</div>
-   <div className="text-sm mut mt-0.5">${PLANS[plan].name} · día ${nx.day} de ${ds.length} · ${nEx} ejercicios${lt?' · último entreno '+ago(lt):''}</div>
+   <div className="chip flex flex-wrap rounded-full p-0.5">${pins.map(k=>html`<button key=${k} onClick=${()=>setSel(k)} className=${'h-8 px-3 rounded-full text-xs '+(tag===k?'bg-neutral-200 text-black font-semibold':'mut')}>${short(k)} · ${cnt(k)}</button>`)}</div></div>
+  ${nx?html`<div className="pop-in" key=${nx.id}><div className="text-2xl font-bold leading-tight">${nx.title||'Sin título'}</div>
+   <div className="text-sm mut mt-0.5">${tag} · día ${ix+1} de ${ds.length} · ${nEx} ejercicios${lt?' · último entreno '+ago(lt):''}</div>
    <div className="flex gap-1.5 mt-3">${ds.map(n=>html`<span key=${n.id} className=${'h-1.5 flex-1 rounded-full '+(n.id===nx.id?'bg-neutral-200':'bg-[#262626]')}></span>`)}</div>
    <button onClick=${()=>open(nx.id)} className="btn-w h-12 w-full mt-4 text-[15px]">${cur?'Seguir':'Empezar'}</button></div>`
-  :html`<p className="text-sm mut">No encuentro los días de la ${PLANS[plan].name}.</p>`}
+  :null}
  </div>`;
 }
 
@@ -805,8 +811,8 @@ function App(){
   el.style.transition='transform .28s cubic-bezier(.32,.72,0,1)';
   if(s.dx>w*0.33||(v>0.5&&s.dx>40)){if(hasDone(note)){el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300);setAsk(true)}else{el.style.transform='translateX('+w+'px)';setTimeout(leaveNow,250)}}
   else{el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300)}};
- const create=()=>{const n={id:uid(),title:'',tags:[],updated:Date.now(),blocks:[]};setNotes(ns=>[n,...ns]);open(n.id)};
- const dup=()=>{const c=clear(clone(note));delete c.hist;delete c.plan;delete c.day;c.id=uid();c.title=(note.title||'Rutina')+' (copia)';c.tags=(c.tags||[]).filter(t=>!t.startsWith('Rutina '));c.updated=Date.now();c.blocks.forEach(reid);setNotes(ns=>[c,...ns]);open(c.id)};
+ const create=()=>{const n={id:uid(),title:'',tags:[],created:Date.now(),updated:Date.now(),blocks:[]};setNotes(ns=>[n,...ns]);open(n.id)};
+ const dup=()=>{const c=clear(clone(note));delete c.hist;delete c.plan;delete c.day;c.id=uid();c.created=Date.now();c.title=(note.title||'Rutina')+' (copia)';c.tags=(c.tags||[]).filter(t=>!t.startsWith('Rutina '));c.updated=Date.now();c.blocks.forEach(reid);setNotes(ns=>[c,...ns]);open(c.id)};
  /* Semana de descarga */
  const beginDl=()=>{setNotes(ns=>ns.map(startDl));cloud.setCfg({deload:Date.now()})};
  const finishDl=()=>{setNotes(ns=>ns.map(endDl));cloud.setCfg({deload:0,lastDeload:Date.now()})};
@@ -816,6 +822,8 @@ function App(){
  const doImport=async d=>{setImp(null);try{await cloud.replaceAll(d);setAid(null);setBmsg('Copia importada: '+d.notes.length+' rutinas y '+d.meas.length+' medidas.')}catch(e){setBmsg('No se ha podido importar del todo. Prueba otra vez.')}};
  const allTags=[...new Set(notes.flatMap(n=>n.tags))].sort((a,b)=>(a.startsWith('Rutina ')?0:1)-(b.startsWith('Rutina ')?0:1)||a.localeCompare(b));
  const ft=tag&&allTags.includes(tag)?tag:null;
+ const pinned=pinTags(notes,cfg);
+ const togglePin=t=>{if(pinned.includes(t)){cloud.setCfg({pins:pinned.filter(x=>x!==t)})}else{setNotes(ns=>ns.map(n=>(n.tags||[]).includes(t)&&n.day==null&&n.created==null?{...n,created:n.updated||Date.now()}:n));cloud.setCfg({pins:[...pinned,t],pinSel:t})}};
  const sorted=[...notes].sort((a,b)=>a.plan&&b.plan?(a.plan===b.plan?a.day-b.day:a.plan<b.plan?-1:1):a.plan?-1:b.plan?1:b.updated-a.updated);
  const shown=sorted.filter(n=>(!ft||n.tags.includes(ft))&&(!day||hasDay(n,day))&&(!q||((n.title||'')+' '+n.tags.join(' ')).toLowerCase().includes(q.toLowerCase())));
  const info=n=>{const e=n.blocks.filter(b=>b.type==='exercise').length,s=n.blocks.flatMap(b=>b.sets||[]);return e?`${e} ejercicios · ${s.length} series`:`${n.blocks.length} bloques`};
@@ -835,14 +843,15 @@ function App(){
     <button onClick=${create} className="btn-w h-11 px-4 shrink-0 flex items-center gap-1.5 text-sm">${I(P.plus,16)}Nueva</button>
    </div>
    ${dl&&html`<div className="rounded-2xl bg-neutral-200 text-black px-4 py-3 text-sm pop-in"><b>Semana de descarga</b> · día ${Math.min(7,daysSince(cfg.deload)+1)} de 7. Mitad de series, −10 % de peso y RPE 6–7.</div>`}
-   <${NextCard} notes=${notes} cfg=${cfg} setPlan=${k=>cloud.setCfg({plan:k})} open=${open}/>
+   <${NextCard} notes=${notes} cfg=${cfg} setSel=${k=>cloud.setCfg({pinSel:k})} open=${open}/>
    <h2 className="text-xl font-semibold px-1 pt-3">Tus rutinas</h2>
-   <p className="text-xs mut px-1 -mt-1">Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia». Tus rutinas de antes están en «Antiguas», con su historial.</p>
+   ${(allTags.includes('Rutina A')||allTags.includes('Rutina C')||allTags.includes('Antiguas'))&&html`<p className="text-xs mut px-1 -mt-1">${[allTags.includes('Rutina A')||allTags.includes('Rutina C')?'Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia».':'',allTags.includes('Antiguas')?'Tus rutinas de antes están en «Antiguas», con su historial.':''].filter(Boolean).join(' ')}</p>`}
    <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder="Buscar rutina o etiqueta" className="field w-full h-12 px-4"/>
    ${allTags.length>0&&html`<div className="flex gap-2 flex-wrap">
     ${allTags.map(t=>html`<button key=${t} onClick=${()=>setTag(ft===t?null:t)} className=${'h-9 px-4 rounded-full text-sm '+(ft===t?'bg-neutral-200 text-black font-semibold':'chip mut')}>${t}</button>`)}
     <button onClick=${()=>setTag(null)} className=${'h-9 px-4 rounded-full text-sm '+(!ft?'bg-neutral-200 text-black font-semibold':'chip mut')}>Todas</button>
    </div>`}
+   ${ft&&html`<div className="flex"><button onClick=${()=>togglePin(ft)} className="h-9 px-4 rounded-full text-sm chip mut">${pinned.includes(ft)?'Quitar de arriba':'Fijar arriba'}</button></div>`}
    <div className="space-y-3">
     ${shown.map((n,ix)=>html`<button key=${n.id} style=${{animationDelay:ix*50+'ms'}} onClick=${()=>open(n.id)} className="pop-in card w-full text-left p-4 flex items-center gap-3">
      <div className="flex-1 min-w-0">
