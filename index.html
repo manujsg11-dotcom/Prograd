@@ -490,7 +490,10 @@ function ProgCard({notes,open,cfg,onStartDl,onEndDl}){
 
 /* ===== Qué día toca (rutinas ancladas arriba) ===== */
 const pinTags=(notes,cfg)=>{const have=new Set(notes.flatMap(n=>n.tags||[]));return(Array.isArray(cfg.pins)?cfg.pins:['Rutina A','Rutina C']).filter(t=>have.has(t))};
-const dayKey=n=>n.day!=null?n.day:n.created!=null?n.created:(n.updated||0);
+const dayKey=n=>n.ord!=null?n.ord:n.day!=null?n.day:n.created!=null?n.created:(n.updated||0);
+const AB={display:'flex',alignItems:'center',gap:6,height:34,padding:'0 12px',borderRadius:10,boxShadow:'inset 0 0 0 1px #404040',background:'transparent',color:'#d4d4d4',fontSize:13};
+const ABon={...AB,background:'#e5e5e5',color:'#000',boxShadow:'none'};
+const SORT='M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4';
 function NextCard({notes,cfg,setSel,open}){
  const pins=pinTags(notes,cfg);
  if(!pins.length)return null;
@@ -786,6 +789,7 @@ function App(){
  const [tag,setTag]=useState(null);
  const [day,setDay]=useState(null);
  const [q,setQ]=useState('');
+ const [ordering,setOrdering]=useState(false);
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(notes))}catch(e){}},[notes]);
  useEffect(()=>{try{localStorage.removeItem('gym-timer');localStorage.removeItem('gym-deload')}catch(e){}},[]);
  const cloud=useCloud(notes,setNotes),cfg=cloud.cfg,dl=!!cfg.deload;
@@ -812,7 +816,7 @@ function App(){
   if(s.dx>w*0.33||(v>0.5&&s.dx>40)){if(hasDone(note)){el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300);setAsk(true)}else{el.style.transform='translateX('+w+'px)';setTimeout(leaveNow,250)}}
   else{el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300)}};
  const create=()=>{const n={id:uid(),title:'',tags:[],created:Date.now(),updated:Date.now(),blocks:[]};setNotes(ns=>[n,...ns]);open(n.id)};
- const dup=()=>{const c=clear(clone(note));delete c.hist;delete c.plan;delete c.day;c.id=uid();c.created=Date.now();c.title=(note.title||'Rutina')+' (copia)';c.tags=(c.tags||[]).filter(t=>!t.startsWith('Rutina '));c.updated=Date.now();c.blocks.forEach(reid);setNotes(ns=>[c,...ns]);open(c.id)};
+ const dup=()=>{const c=clear(clone(note));delete c.hist;delete c.plan;delete c.day;delete c.ord;c.id=uid();c.created=Date.now();c.title=(note.title||'Rutina')+' (copia)';c.tags=(c.tags||[]).filter(t=>!t.startsWith('Rutina '));c.updated=Date.now();c.blocks.forEach(reid);setNotes(ns=>[c,...ns]);open(c.id)};
  /* Semana de descarga */
  const beginDl=()=>{setNotes(ns=>ns.map(startDl));cloud.setCfg({deload:Date.now()})};
  const finishDl=()=>{setNotes(ns=>ns.map(endDl));cloud.setCfg({deload:0,lastDeload:Date.now()})};
@@ -825,7 +829,10 @@ function App(){
  const pinned=pinTags(notes,cfg);
  const togglePin=t=>{if(pinned.includes(t)){cloud.setCfg({pins:pinned.filter(x=>x!==t)})}else{setNotes(ns=>ns.map(n=>(n.tags||[]).includes(t)&&n.day==null&&n.created==null?{...n,created:n.updated||Date.now()}:n));cloud.setCfg({pins:[...pinned,t],pinSel:t})}};
  const sorted=[...notes].sort((a,b)=>a.plan&&b.plan?(a.plan===b.plan?a.day-b.day:a.plan<b.plan?-1:1):a.plan?-1:b.plan?1:b.updated-a.updated);
- const shown=sorted.filter(n=>(!ft||n.tags.includes(ft))&&(!day||hasDay(n,day))&&(!q||((n.title||'')+' '+n.tags.join(' ')).toLowerCase().includes(q.toLowerCase())));
+ const shown0=sorted.filter(n=>(!ft||n.tags.includes(ft))&&(!day||hasDay(n,day))&&(!q||((n.title||'')+' '+n.tags.join(' ')).toLowerCase().includes(q.toLowerCase())));
+ const shown=ft?[...shown0].sort((a,b)=>dayKey(a)-dayKey(b)):shown0;
+ const tagList=ft?notes.filter(n=>(n.tags||[]).includes(ft)).sort((a,b)=>dayKey(a)-dayKey(b)):[];
+ const moveDay=(id,d)=>{const arr=tagList.map(n=>n.id),i=arr.indexOf(id),j=i+d;if(i<0||j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];const o=new Map(arr.map((x,k)=>[x,k]));setNotes(ns=>ns.map(n=>o.has(n.id)?{...n,ord:o.get(n.id)}:n))};
  const info=n=>{const e=n.blocks.filter(b=>b.type==='exercise').length,s=n.blocks.flatMap(b=>b.sets||[]);return e?`${e} ejercicios · ${s.length} series`:`${n.blocks.length} bloques`};
  const histTxt=n=>{const h=(n.hist||[]).filter(x=>!x.demo);return h.length?`Hecha ${h.length} ${h.length===1?'vez':'veces'} · última ${ago(h[h.length-1].t)}`:null};
  const inProg=n=>{const s=n.blocks.flatMap(b=>b.sets||[]),d=s.filter(x=>x.done).length;return d?`${d}/${s.length}`:null};
@@ -848,19 +855,24 @@ function App(){
    ${(allTags.includes('Rutina A')||allTags.includes('Rutina C')||allTags.includes('Antiguas'))&&html`<p className="text-xs mut px-1 -mt-1">${[allTags.includes('Rutina A')||allTags.includes('Rutina C')?'Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia».':'',allTags.includes('Antiguas')?'Tus rutinas de antes están en «Antiguas», con su historial.':''].filter(Boolean).join(' ')}</p>`}
    <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder="Buscar rutina o etiqueta" className="field w-full h-12 px-4"/>
    ${allTags.length>0&&html`<div className="flex gap-2 flex-wrap">
-    ${allTags.map(t=>html`<button key=${t} onClick=${()=>setTag(ft===t?null:t)} className=${'h-9 px-4 rounded-full text-sm '+(ft===t?'bg-neutral-200 text-black font-semibold':'chip mut')}>${t}</button>`)}
-    <button onClick=${()=>setTag(null)} className=${'h-9 px-4 rounded-full text-sm '+(!ft?'bg-neutral-200 text-black font-semibold':'chip mut')}>Todas</button>
+    ${allTags.map(t=>html`<button key=${t} onClick=${()=>{setOrdering(false);setTag(ft===t?null:t)}} className=${'h-9 px-4 rounded-full text-sm '+(ft===t?'bg-neutral-200 text-black font-semibold':'chip mut')}>${t}</button>`)}
+    <button onClick=${()=>{setOrdering(false);setTag(null)}} className=${'h-9 px-4 rounded-full text-sm '+(!ft?'bg-neutral-200 text-black font-semibold':'chip mut')}>Todas</button>
    </div>`}
-   ${ft&&html`<div className="flex"><button onClick=${()=>togglePin(ft)} className="h-9 px-4 rounded-full text-sm chip mut">${pinned.includes(ft)?'Quitar de arriba':'Fijar arriba'}</button></div>`}
+   ${ft&&html`<div className="flex gap-2 flex-wrap items-center">
+    <button onClick=${()=>togglePin(ft)} style=${AB}>${I(pinned.includes(ft)?P.x:P.arrU,15)}${pinned.includes(ft)?'Quitar de arriba':'Fijar arriba'}</button>
+    <button onClick=${()=>setOrdering(o=>!o)} style=${ordering?ABon:AB}>${I(ordering?P.check:SORT,15)}${ordering?'Listo':'Ordenar días'}</button></div>`}
    <div className="space-y-3">
-    ${shown.map((n,ix)=>html`<button key=${n.id} style=${{animationDelay:ix*50+'ms'}} onClick=${()=>open(n.id)} className="pop-in card w-full text-left p-4 flex items-center gap-3">
+    ${ordering&&ft&&tagList.map((n,i)=>html`<div key=${n.id} className="card p-4 flex items-center gap-3"><span className="mut" style=${{width:20,textAlign:'center'}}>${i+1}</span><span className="flex-1 min-w-0 truncate text-lg font-semibold">${n.title||'Sin título'}</span>
+     <button aria-label="Subir" disabled=${i===0} onClick=${()=>moveDay(n.id,-1)} className="h-9 w-9 grid place-items-center rounded-full chip" style=${{opacity:i===0?.3:1}}>${I(P.up,18)}</button>
+     <button aria-label="Bajar" disabled=${i===tagList.length-1} onClick=${()=>moveDay(n.id,1)} className="h-9 w-9 grid place-items-center rounded-full chip" style=${{opacity:i===tagList.length-1?.3:1}}>${I(P.down,18)}</button></div>`)}
+    ${!(ordering&&ft)&&shown.map((n,ix)=>html`<button key=${n.id} style=${{animationDelay:ix*50+'ms'}} onClick=${()=>open(n.id)} className="pop-in card w-full text-left p-4 flex items-center gap-3">
      <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2"><span className="text-lg font-semibold truncate">${n.title||'Sin título'}</span>${inProg(n)&&html`<span className="shrink-0 rounded-full bg-neutral-200 text-black text-xs font-semibold px-2 py-0.5 num">En curso ${inProg(n)}</span>`}</div>
       <div className="text-sm mut">${info(n)}</div>
       ${histTxt(n)&&html`<div className="text-sm text-neutral-300">${histTxt(n)}</div>`}
       ${n.tags.length>0&&html`<div className="flex gap-1.5 mt-2 flex-wrap">${n.tags.map(t=>html`<span key=${t} className="chip rounded-full px-2.5 py-0.5 text-xs mut">${t}</span>`)}</div>`}</div>
      <span className="mut">${I(P.chev,18)}</span></button>`)}
-    ${shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':'Cargando tus rutinas…'}</p>`}
+    ${!(ordering&&ft)&&shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':'Cargando tus rutinas…'}</p>`}
    </div>
    <div className="pt-3"></div>
    <${ProgCard} notes=${notes} open=${open} cfg=${cfg} onStartDl=${beginDl} onEndDl=${finishDl}/>
