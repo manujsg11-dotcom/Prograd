@@ -625,7 +625,7 @@ function Exercise({b,set,hist,best,remember,dl,warm}){
     <span className="mut num text-center">${i+1}</span>
     <input id=${'kg-'+s.id} type="text" inputMode="decimal" autoComplete="off" value=${s.kg} placeholder="0" onChange=${e=>up(s.id,{kg:e.target.value.replace(/[^0-9.,]/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')}/>
     <input id=${'rp-'+s.id} type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value=${s.reps} placeholder=${ph} onChange=${e=>up(s.id,{reps:e.target.value.replace(/\D/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')}/>
-    <button aria-label="Marcar serie" onClick=${()=>{up(s.id,{done:!s.done,doneAt:s.done?null:Date.now()});if(!s.done){try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}}}} className=${'h-11 rounded-xl grid place-items-center '+(s.done?'bg-neutral-200 text-black chk-pop':'chip text-transparent')}>${I(P.check,20)}</button>
+    <button aria-label="Marcar serie" onClick=${()=>{up(s.id,{done:!s.done,doneAt:s.done?null:Date.now()});if(!s.done){try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}atajoSerie(t)}}} className=${'h-11 rounded-xl grid place-items-center '+(s.done?'bg-neutral-200 text-black chk-pop':'chip text-transparent')}>${I(P.check,20)}</button>
     <button aria-label="Borrar serie" onClick=${()=>del(s.id)} className="h-11 grid place-items-center text-neutral-600 hover:text-white">${I(P.x,15)}</button>
   </div>`)}
   </div>
@@ -1078,6 +1078,35 @@ function CountUp({to,ms=800}){
   const f=t=>{if(t0===null)t0=t;const k=Math.min(1,(t-t0)/ms),e=1-Math.pow(1-k,3);setV(Math.round(to*e));if(k<1)raf=requestAnimationFrame(f)};raf=requestAnimationFrame(f);return()=>cancelAnimationFrame(raf)},[to]);
  return v;
 }
+/* ===== Temporizador del iPhone mediante un atajo ===== */
+const AT0={on:false,name:'Descanso Prograd',big:150,small:90,none:120};
+const atLoad=()=>{try{return{...AT0,...JSON.parse(localStorage.getItem('gym-atajo')||'{}')}}catch(e){return{...AT0}}};
+const atSecs=(c,t)=>t?(t.big?c.big:c.small):c.none;
+const atOpen=(c,secs)=>{try{window.location.href='shortcuts://run-shortcut?name='+encodeURIComponent(c.name)+'&input=text&text='+secs}catch(e){}};
+const atajoSerie=t=>{const c=atLoad();if(c.on&&c.name)atOpen(c,atSecs(c,t))};
+const fmtT=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+function AtajoCard(){
+ const [c,setC]=useState(atLoad),[help,setHelp]=useState(false);
+ const inClaude=!!(window.claude&&window.claude.use);
+ const upd=p=>{const n={...atLoad(),...p};setC(n);try{localStorage.setItem('gym-atajo',JSON.stringify(n))}catch(e){}};
+ const row={display:'flex',alignItems:'center',justifyContent:'space-between',gap:12};
+ const sq={width:34,height:34,borderRadius:10,fontSize:18,fontWeight:600,background:'rgba(255,255,255,.07)',color:'#e5e5e5'};
+ const Step=(k,l)=>html`<div style=${row}><span>${l}</span><div style=${{display:'flex',alignItems:'center',gap:8}}><button aria-label=${'Menos tiempo: '+l} onClick=${()=>upd({[k]:Math.max(15,c[k]-15)})} style=${sq}>−</button><span className="num" style=${{width:46,textAlign:'center',fontWeight:700}}>${fmtT(c[k])}</span><button aria-label=${'Más tiempo: '+l} onClick=${()=>upd({[k]:Math.min(600,c[k]+15)})} style=${sq}>+</button></div></div>`;
+ const tog=html`<button role="switch" aria-checked=${c.on} aria-label="Abrir el atajo al marcar una serie" onClick=${()=>upd({on:!c.on})} style=${{width:52,height:30,borderRadius:15,background:c.on?'#C6F432':'rgba(255,255,255,.16)',position:'relative',flexShrink:0}}><span style=${{position:'absolute',top:3,left:c.on?25:3,width:24,height:24,borderRadius:12,background:c.on?'#0B0D10':'#e5e5e5',transition:'left .3s var(--spring)'}}></span></button>`;
+ const pasos=['Abre la app Atajos y crea uno nuevo con el botón +.','Ponle de nombre exactamente «'+(c.name||'Descanso Prograd')+'».','Añade la acción «Iniciar temporizador».','Toca la duración y elige la variable «Entrada del atajo». Cambia «minutos» por «segundos».','Guárdalo y vuelve aquí. Pulsa «Probar» para comprobarlo.'];
+ return html`<div className="card p-4" style=${{display:'grid',gap:14}}>
+  <div className="flex justify-between text-sm"><span className="mut">Temporizador del iPhone</span><span className="mut">${c.on?'Activado':'Desactivado'}</span></div>
+  <div style=${row}><div><div style=${{fontWeight:600}}>Abrir el atajo al marcar una serie</div><div className="text-xs mut" style=${{marginTop:2}}>Pone un temporizador del Reloj que suena aunque el móvil esté bloqueado. Se abrirá Atajos un momento.</div></div>${tog}</div>
+  ${inClaude&&html`<div className="field text-sm text-neutral-300" style=${{padding:'10px 12px'}}>Solo funciona en la app instalada desde GitHub en la pantalla de inicio del iPhone.</div>`}
+  <div style=${row}><label htmlFor="atajo-nombre">Nombre del atajo</label><input id="atajo-nombre" value=${c.name} onChange=${e=>upd({name:e.target.value})} className="field" style=${{height:38,padding:'0 10px',width:170}}/></div>
+  ${Step('big','Ejercicios básicos')}${Step('small','Aislamiento')}${Step('none','Sin objetivo')}
+  <div style=${{display:'flex',gap:6}}>
+   <button onClick=${()=>setHelp(h=>!h)} aria-expanded=${help} style=${{...AB,flex:1,justifyContent:'center'}}>${help?'Ocultar instrucciones':'Cómo crear el atajo'}</button>
+   <button onClick=${()=>atOpen(c,c.big)} style=${{...AB,justifyContent:'center'}}>Probar</button>
+  </div>
+  ${help&&html`<ol className="text-sm pop-in" style=${{margin:0,paddingLeft:20,display:'grid',gap:6,color:'#d4d4d4',listStyle:'decimal'}}>${pasos.map((p,i)=>html`<li key=${i}>${p}</li>`)}</ol>`}
+ </div>`;
+}
 function TabBar({tab,setTab}){
  const i=Math.max(0,TABS.findIndex(t=>t[0]===tab));
  return html`<nav aria-label="Secciones" className="lg-bar" style=${{position:'fixed',left:20,right:20,bottom:'calc(env(safe-area-inset-bottom,0px) + 12px)',zIndex:20,maxWidth:420,margin:'0 auto',height:62,borderRadius:999,padding:5,display:'flex'}}>
@@ -1527,6 +1556,7 @@ function App(){
    <${BackupCard} cfg=${cfg} mode=${cloud.mode} msg=${bmsg} onExport=${doExport} onPick=${()=>fileRef.current&&fileRef.current.click()}/>
    <input ref=${fileRef} type="file" accept="application/json,.json" className="hidden" onChange=${pickFile}/>
    <${NotifCard} notes=${notes} cfg=${cfg}/>
+   <${AtajoCard}/>
    <p className="text-xs mut px-1">${cloud.label}</p>
    </div>`}
   </div>`}
