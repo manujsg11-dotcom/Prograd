@@ -352,6 +352,7 @@ button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .fade{animation:fade .3s both}.fade-out{animation:fadeout .26s forwards}
 .blink{animation:blink 1s ease-in-out infinite}
 .grow{transform-origin:left;animation:grow .8s var(--ios) both}
+@keyframes drawl{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
 @keyframes goo{0%{transform:scale(1)}35%{transform:scale(1.3,.86)}70%{transform:scale(.96,1.05)}100%{transform:scale(1)}}
 @keyframes pushl{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
 @keyframes flick{0%,100%{transform:scale(1) rotate(0)}30%{transform:scale(1.05,.95) rotate(-2.5deg)}65%{transform:scale(.97,1.05) rotate(2deg)}}
@@ -591,8 +592,11 @@ function ProgBox({b,p,first,applied,onApply}){
 }
 
 /* Bloques */
-function Exercise({b,set,hist,best,remember,dl}){
+function Exercise({b,set,hist,best,remember,dl,warm}){
  const [open,setOpen]=useState(null);
+ const wk=b.id+':'+ymd(Date.now());
+ const [wHide,setWHide]=useState(()=>{try{return localStorage.getItem('gym-warm')===wk}catch(e){return false}});
+ const hideWarm=()=>{setWHide(true);try{localStorage.setItem('gym-warm',wk)}catch(e){}};
  const up=(id,p)=>set({...b,sets:b.sets.map(s=>s.id===id?{...s,...p}:s)});
  const add=()=>{const l=b.sets[b.sets.length-1];set({...b,sets:[...b.sets,mkSet(l?l.kg:'',l?l.reps:'')]})};
  const del=id=>{remember('Serie borrada');set({...b,sets:b.sets.filter(x=>x.id!==id)})};
@@ -605,6 +609,11 @@ function Exercise({b,set,hist,best,remember,dl}){
   <input list="exnames" autoComplete="off" value=${b.name} onChange=${e=>set({...b,name:e.target.value})} placeholder="Nombre del ejercicio" className="w-full bg-transparent text-xl font-semibold outline-none"/>
   ${t&&html`<div className="text-sm text-neutral-300 mt-0.5 num">${t.s} × ${ph} reps <span className="mut">· descanso ${restOf(t)} · +${fN(t.inc)} kg al subir</span></div>`}
   ${(last||best)&&html`<div className="text-xs mut mt-1 num leading-relaxed">${last&&html`<span>Última vez (${ago(last.t)}${last.demo?', ejemplo':''}): <span className="text-neutral-300">${last.s.map(x=>fN(x[0])+'×'+x[1]).join(' · ')}</span></span>`}${last&&best?html`<span> · </span>`:''}${best?html`<span>1RM est. <span className="text-neutral-300">${fN(best)} kg</span></span>`:''}</div>`}
+  ${warm&&!wHide&&!b.sets.some(x=>x.done)&&(()=>{const s1=b.sets.find(x=>N(x.kg)>0),w=s1?Math.round(N(s1.kg)*.5/2.5)*2.5:0;return html`<div className="field pop-in" style=${{marginTop:12,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}}>
+   <div style=${{flex:1,minWidth:0}}><div className="text-xs mut">Calentamiento sugerido</div><div className="num" style=${{fontWeight:600,marginTop:1}}>${w>0?'8 × '+fN(w)+' kg':'8 reps con la mitad de tu peso'}</div></div>
+   <button onClick=${hideWarm} style=${{...AB,height:32,padding:'0 12px'}}>Hecho</button>
+   <button onClick=${hideWarm} style=${{...AB,height:32,padding:'0 12px',boxShadow:'none',color:'#8a8a8a'}}>Saltar</button>
+  </div>`})()}
   <div className="flex items-center gap-2 my-3 flex-wrap">${[['t','Objetivo'],['p','Discos'],['m','Músculos']].map(([k,l])=>html`<button key=${k} onClick=${()=>{if(k==='t'&&!t)set({...b,tgt:T(3,8,12,2.5,isBig(b.name)?1:0)});setOpen(open===k?null:k)}} className=${'h-8 px-4 rounded-full text-sm '+(open===k?'bg-neutral-200 text-black':'chip mut')}>${k==='t'&&!t?'+ Objetivo':l}</button>`)}
    <span className="ml-auto text-xs mut num">${done}/${b.sets.length} hechas</span></div>
   ${open==='t'&&t&&html`<${TargetEdit} b=${b} set=${set}/>`}
@@ -640,7 +649,7 @@ function TextBlock({b,set}){
  useEffect(fit,[b.text]);
  return html`<textarea ref=${ref} value=${b.text} onChange=${e=>set({...b,text:e.target.value})} placeholder="Escribe una nota…" rows="1" className="field w-full px-3 py-2 text-[15px] leading-snug resize-none overflow-hidden"></textarea>`;
 }
-function Block({b,i,n,set,del,move,remember,hist,best,dl}){
+function Block({b,i,n,set,del,move,remember,hist,best,dl,warm}){
  const [out,setOut]=useState(false);
  const lab={exercise:['Ejercicio',P.ex],todo:['Checklist',P.ck],text:['Nota',P.tx]}[b.type];
  return html`<section style=${out?{}:{animationDelay:i*45+'ms'}} className=${'card pop-in '+(b.type==='text'?'p-3 ':'p-4 ')+(out?'pop-out':'')}>
@@ -653,7 +662,7 @@ function Block({b,i,n,set,del,move,remember,hist,best,dl}){
     <${RB} ic="trash" label="Borrar bloque" onClick=${()=>{remember('Bloque borrado');setOut(true);setTimeout(()=>del(b.id),260)}} cls="hover:!text-red-400"/>
    </div>
   </div>
-  ${b.type==='exercise'?html`<${Exercise} b=${b} set=${set} hist=${hist||[]} best=${best} remember=${remember} dl=${dl}/>`:
+  ${b.type==='exercise'?html`<${Exercise} b=${b} set=${set} hist=${hist||[]} best=${best} remember=${remember} dl=${dl} warm=${warm}/>`:
     b.type==='todo'?html`<${Todo} b=${b} set=${set} remember=${remember}/>`:
     html`<${TextBlock} b=${b} set=${set}/>`}
  </section>`;
@@ -776,7 +785,7 @@ function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl}){
   <${TagEditor} tags=${note.tags} onSave=${t=>patch(n=>({...n,tags:t}))}/>
   ${dl&&html`<div className="rounded-2xl bg-neutral-200 text-black px-4 py-3 text-sm"><b>Semana de descarga.</b> Mitad de series, −10 % de peso y RPE 6–7 (te sobran 3–4 reps).</div>`}
   <datalist id="exnames">${names.map(x=>html`<option key=${x} value=${x}/>`)}</datalist>
-  ${note.blocks.map((b,i)=>html`<${Block} key=${b.id} b=${b} i=${i} n=${note.blocks.length} set=${setBlock} del=${delBlock} move=${move} remember=${remember} dl=${dl} hist=${b.type==='exercise'?histOf(note,b.name):null} best=${b.type==='exercise'&&note.best?note.best[norm(b.name)]:null}/>`)}
+  ${note.blocks.map((b,i)=>html`<${Block} key=${b.id} warm=${b.id===(note.blocks.find(x=>x.type==='exercise')||{}).id} b=${b} i=${i} n=${note.blocks.length} set=${setBlock} del=${delBlock} move=${move} remember=${remember} dl=${dl} hist=${b.type==='exercise'?histOf(note,b.name):null} best=${b.type==='exercise'&&note.best?note.best[norm(b.name)]:null}/>`)}
   ${note.blocks.length===0&&html`<p className="mut py-6 text-center">Rutina vacía. Añade un ejercicio abajo.</p>`}
   <div className="grid grid-cols-3 gap-3">${A('exercise','Ejercicio','ex')}${A('todo','Checklist','ck')}${A('text','Nota','tx')}</div>
   ${hasEx&&html`<button onClick=${()=>setFin(true)} className="btn-w h-14 w-full flex items-center justify-center gap-2">${I(P.flag,18)}Terminar entreno</button>`}
@@ -892,6 +901,68 @@ function RankMap({notes,cfg,meas}){
   </svg>
   <p className="text-sm text-neutral-200" style=${{margin:'6px 0 0',minHeight:20}}>${sel?html`<b>${MUS[sel]}</b> · ${rk(sel)?html`<span style=${{color:RANKS[rk(sel).tier][1],fontWeight:600}}>${rankName(rk(sel))}</span>`:'sin clasificar'}`:'Toca un músculo para ver su rango.'}</p>
   <div style=${{display:'flex',flexWrap:'wrap',gap:'4px 10px',marginTop:8}}>${RANKS.map(([nm,c])=>html`<span key=${nm} className="text-xs mut" style=${{display:'flex',alignItems:'center',gap:4}}><i style=${{width:9,height:9,borderRadius:5,background:c,display:'inline-block'}}></i>${nm}</span>`)}</div>
+ </div>`;
+}
+/* ===== Historial por ejercicio ===== */
+const EXM=[['kg','Peso máx.','kg'],['e1','1RM est.','kg'],['vol','Volumen','kg']];
+function exHistory(notes){
+ const m={};
+ notes.forEach(n=>(n.hist||[]).forEach(h=>{if(h.demo||h.dl)return;(h.ex||[]).forEach(e=>{const k=norm(e.n),s=(e.s||[]).filter(x=>x[0]>0&&x[1]>0);if(!k||!s.length)return;
+  const top=s.reduce((a,x)=>x[0]>a[0]||(x[0]===a[0]&&x[1]>a[1])?x:a,s[0]);
+  (m[k]=m[k]||{k,name:e.n,pts:[]}).pts.push({t:h.t,kg:top[0],r:top[1],e1:Math.round(Math.max(...s.map(x=>e1(x[0],x[1])))*10)/10,vol:Math.round(s.reduce((a,x)=>a+x[0]*x[1],0)),s})})}));
+ return Object.values(m).map(x=>{x.pts.sort((a,b)=>a.t-b.t);x.name=x.pts.length?x.name:x.name;return x}).sort((a,b)=>b.pts.length-a.pts.length||a.name.localeCompare(b.name));
+}
+function ExerciseChart({notes}){
+ const all=exHistory(notes);
+ const [key,setKey]=useState(()=>{try{return localStorage.getItem('gym-exchart')||''}catch(e){return''}});
+ const [met,setMet]=useState('kg'),[hi,setHi]=useState(null);
+ const ex=all.find(x=>x.k===key)||all[0];
+ const pick=k=>{setKey(k);setHi(null);try{localStorage.setItem('gym-exchart',k)}catch(e){}};
+ const head=html`<div className="flex justify-between text-sm mb-3"><span className="mut">Historial por ejercicio</span>${ex&&html`<span className="mut num">${ex.pts.length} ${ex.pts.length===1?'sesión':'sesiones'}</span>`}</div>`;
+ if(!ex)return html`<div className="card p-4">${head}<p className="text-sm mut" style=${{margin:0}}>Cuando termines entrenos con peso y repeticiones, aquí podrás ver cómo evoluciona cada ejercicio.</p></div>`;
+ const pts=ex.pts,val=x=>x[met],unit=EXM.find(x=>x[0]===met)[2];
+ const fmt=v=>met==='vol'?fmtK(v):fN(v);
+ const W=320,H=150,L=36,R=12,T=14,B=24;
+ const vs=pts.map(val),lo0=Math.min(...vs),hi0=Math.max(...vs),pad=(hi0-lo0)*.15||Math.max(1,hi0*.1);
+ const step=(()=>{const r=(hi0-lo0+2*pad)/3,p=Math.pow(10,Math.floor(Math.log10(r||1))),n=r/p;return(n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p})();
+ const y0=Math.max(0,Math.floor((lo0-pad)/step)*step),y1=Math.ceil((hi0+pad)/step)*step||1;
+ const t0=pts[0].t,t1=pts[pts.length-1].t,sp=t1-t0;
+ const X=t=>sp?L+(t-t0)/sp*(W-L-R):L+(W-L-R)/2,Y=v=>T+(1-(v-y0)/(y1-y0))*(H-T-B);
+ const ticks=[];for(let v=y0;v<=y1+1e-9;v+=step)ticks.push(Math.round(v*100)/100);
+ const line=pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y(val(p)).toFixed(1)).join(' ');
+ const area=line+' L'+X(t1).toFixed(1)+' '+(H-B)+' L'+X(t0).toFixed(1)+' '+(H-B)+' Z';
+ const best=Math.max(...vs),last=vs[vs.length-1],first=vs[0],diff=last-first;
+ const fd=t=>new Date(t).toLocaleDateString('es-ES',{day:'numeric',month:'short'}).replace('.','');
+ const sel=hi!=null?pts[hi]:null;
+ const near=e=>{const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*W;let bi=0,bd=1e9;pts.forEach((p,i)=>{const d=Math.abs(X(p.t)-x);if(d<bd){bd=d;bi=i}});setHi(bi)};
+ const Stat=(l,v,c)=>html`<div style=${{minWidth:0}}><div className="text-xs mut">${l}</div><div className="num" style=${{fontSize:17,fontWeight:700,color:c||'#f2f2f2'}}>${v}</div></div>`;
+ return html`<div className="card p-4">
+  ${head}
+  <select aria-label="Ejercicio" value=${ex.k} onChange=${e=>pick(e.target.value)} className="field w-full" style=${{height:42,padding:'0 12px',fontWeight:600,appearance:'auto'}}>
+   ${all.map(x=>html`<option key=${x.k} value=${x.k}>${x.name.charAt(0).toUpperCase()+x.name.slice(1)}</option>`)}
+  </select>
+  <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginTop:10}}>${EXM.map(([k,l])=>html`<button key=${k} onClick=${()=>{setMet(k);setHi(null)}} style=${{height:34,borderRadius:10,fontSize:13,fontWeight:600,background:met===k?'#e5e5e5':'rgba(255,255,255,.07)',color:met===k?'#000':'#d4d4d4'}}>${l}</button>`)}</div>
+  <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginTop:14}}>
+   ${Stat('Última',fmt(last)+' '+unit)}${Stat('Mejor',fmt(best)+' '+unit)}${Stat('Desde el inicio',pts.length>1?(diff>0?'+':diff<0?'−':'')+fmt(Math.abs(diff))+' '+unit:'—',pts.length>1?(diff>0?'#C6F432':diff<0?'#f08a8a':null):null)}
+  </div>
+  <div style=${{position:'relative',marginTop:10}}>
+   <svg viewBox=${'0 0 '+W+' '+H} style=${{width:'100%',display:'block',touchAction:'pan-y'}} role="img" aria-label=${'Evolución de '+ex.name+' por sesión'} onPointerMove=${near} onPointerDown=${near} onPointerLeave=${e=>{if(e.pointerType==='mouse')setHi(null)}}>
+    <defs><linearGradient id="exg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#C6F432" stopOpacity=".28"/><stop offset="1" stopColor="#C6F432" stopOpacity="0"/></linearGradient></defs>
+    ${ticks.map(v=>html`<g key=${v}><line x1=${L} x2=${W-R} y1=${Y(v)} y2=${Y(v)} stroke="#262626" strokeWidth="1"/><text x=${L-6} y=${Y(v)+3.5} textAnchor="end" fill="#6b7078" fontSize="10" className="num">${fmt(v)}</text></g>`)}
+    <text x=${L} y=${H-6} fill="#6b7078" fontSize="10">${fd(t0)}</text>
+    ${pts.length>1&&html`<text x=${W-R} y=${H-6} textAnchor="end" fill="#6b7078" fontSize="10">${fd(t1)}</text>`}
+    ${pts.length>1&&html`<path key=${ex.k+met+'a'} d=${area} fill="url(#exg)" style=${{animation:'fade .6s both'}}/>`}
+    ${pts.length>1&&html`<path key=${ex.k+met+'l'} d=${line} fill="none" stroke="#C6F432" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" pathLength="1" style=${{strokeDasharray:1,animation:'drawl .9s var(--ios) both'}}/>`}
+    ${sel&&html`<line x1=${X(sel.t)} x2=${X(sel.t)} y1=${T} y2=${H-B} stroke="#8a8a8a" strokeWidth="1" strokeDasharray="3 3"/>`}
+    ${pts.map((p,i)=>{const end=i===pts.length-1,on=hi===i;return html`<circle key=${i} cx=${X(p.t)} cy=${Y(val(p))} r=${on?5.5:end?4.5:pts.length>24?0:3} fill=${on||end?'#C6F432':'#141414'} stroke=${on||end?'#141414':'#C6F432'} strokeWidth="2"/>`})}
+   </svg>
+   ${sel&&html`<div role="status" style=${{position:'absolute',top:0,left:(X(sel.t)/W*100)+'%',transform:'translateX('+(X(sel.t)>W*.6?'-105%':X(sel.t)<W*.35?'5%':'-50%')+')',background:'rgba(30,32,36,.95)',border:'1px solid rgba(255,255,255,.1)',borderRadius:12,padding:'7px 10px',pointerEvents:'none',whiteSpace:'nowrap',boxShadow:'0 6px 18px rgba(0,0,0,.5)'}}>
+    <div className="text-xs mut">${new Date(sel.t).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})}</div>
+    <div className="num" style=${{fontWeight:700,fontSize:14}}>${fmt(val(sel))} ${unit}</div>
+    <div className="text-xs num" style=${{color:'#bdbdbd'}}>${sel.s.map(x=>fN(x[0])+'×'+x[1]).join(' · ')}</div>
+   </div>`}
+  </div>
+  <p className="text-xs mut" style=${{margin:'8px 0 0'}}>${pts.length<2?'Con dos sesiones o más verás la línea de evolución.':'Toca la gráfica para ver cada sesión. No cuenta las semanas de descarga.'}</p>
  </div>`;
 }
 function WeekChart({notes}){
@@ -1439,6 +1510,7 @@ function App(){
    <${RanksCard} notes=${notes} cfg=${cfg} meas=${cloud.meas}/>
    <${RankMap} notes=${notes} cfg=${cfg} meas=${cloud.meas}/>
    <${WeekChart} notes=${notes}/>
+   <${ExerciseChart} notes=${notes}/>
    <div className="grid grid-cols-3 gap-3">${Tile(AC.w30,'entrenos · mes')}${Tile(AC.wS,'series · 7 d')}${Tile(fmtK(AC.wV),'kg · 7 d')}</div>
    <div className="card p-4">
     <div className="flex justify-between text-sm mb-3"><span className="mut">Últimos 30 días</span><span className="mut num">${days.filter(d=>act.has(d)).length} días activos</span></div>
