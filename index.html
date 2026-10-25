@@ -951,7 +951,7 @@ function NotifCard({notes,cfg}){
  const listo=!inClaude&&standalone&&soporta&&!!PUSH_SERVER;
  const m=pushMsg(notes,cfg),salta=trainedToday(notes)?ymd(Date.now()):'';
  const avisoHora=restaMin(p.hora,p.antes);
- const upd=x=>{const n={...p,...x};setP(n);pushSave(n);return n};
+ const upd=x=>{const n={...pushLoad(),...x};setP(n);pushSave(n);return n};
  const api=async(path,body)=>{const r=await fetch(PUSH_SERVER+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error '+r.status);return d};
  const getSub=async()=>{const reg=await navigator.serviceWorker.ready;return reg.pushManager.getSubscription()};
  const enviar=async(n,sub)=>{await api('/suscribir',{sub:sub.toJSON(),hora:restaMin(n.hora,n.antes),tz:Intl.DateTimeFormat().resolvedOptions().timeZone,dias:n.dias,titulo:m.titulo,texto:m.texto,salta});upd({sent:JSON.stringify([m.titulo,m.texto,salta])})};
