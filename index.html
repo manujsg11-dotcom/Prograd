@@ -708,6 +708,20 @@ function Block({b,i,n,set,del,move,remember,hist,best,dl,warm}){
     html`<${TextBlock} b=${b} set=${set}/>`}
  </section>`;
 }
+function RoutineField({tags,all,need,onSave}){
+ const cur=tags[0]||'';
+ const [v,setV]=useState(cur);
+ useEffect(()=>setV(cur),[cur]);
+ const names=[...new Set(all.flatMap(n=>(n.tags||[]).slice(0,1)))].filter(t=>t&&t!==cur).sort((a,b)=>a.localeCompare(b));
+ const save=x=>{const t=x.replace(/^#+/,'').trim();if(t===cur)return;onSave(t?[t,...tags.slice(1).filter(y=>y!==t)]:tags.slice(1))};
+ const bad=!cur&&!v.trim();
+ return html`<div className="space-y-2">
+  <label className="block text-xs mut px-1 uppercase" style=${{letterSpacing:'.08em'}}>Rutina</label>
+  <input value=${v} onChange=${e=>setV(e.target.value)} onBlur=${()=>save(v)} onKeyDown=${e=>e.key==='Enter'&&e.target.blur()} placeholder="Ej.: Rutina A" className="field w-full h-12 px-4" style=${bad&&need?{boxShadow:'inset 0 0 0 1.5px #ee4b55'}:null}/>
+  ${!cur&&names.length>0&&html`<div className="flex gap-2 flex-wrap">${names.map(t=>html`<button key=${t} onClick=${()=>{setV(t);save(t)}} className="chip h-9 px-4 rounded-full text-sm text-neutral-200">${t}</button>`)}</div>`}
+  ${bad&&html`<p className="text-xs px-1" style=${{color:need?'#ee4b55':'#a3a3a3'}}>${need?'Ponle nombre a la rutina antes de salir.':names.length?'Elige a qué rutina pertenece este día o escribe una nueva.':'Escribe el nombre de la rutina a la que pertenece este día.'}</p>`}
+ </div>`;
+}
 function TagEditor({tags,onSave}){
  const [v,setV]=useState(tags.join(', '));
  useEffect(()=>setV(tags.join(', ')),[tags.join('|')]);
@@ -795,7 +809,7 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
   </div></div>`,document.body);
 }
 
-function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl}){
+function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl,need,onRoutine}){
  const [cd,setCd]=useState(false);
  const [fin,setFin]=useState(false);
  const [undo,setUndo]=useState(null);
@@ -822,12 +836,12 @@ function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl}){
    ${Ch('Duplicar','copy',onDup)}${Ch('Desmarcar','redo',()=>{remember('Series desmarcadas');patch(n=>clear(clone(n)))})}
    ${Ch(cd?'¿Seguro?':'','trash',()=>cd?onDel():(setCd(true),setTimeout(()=>setCd(false),3000)),cd?'!bg-red-500/90 !text-white':'')}
   </div>
-  <input value=${note.title} onChange=${e=>patch(n=>({...n,title:e.target.value}))} placeholder="Nombre de la rutina" className="w-full bg-transparent text-3xl font-bold outline-none"/>
-  <${TagEditor} tags=${note.tags} onSave=${t=>patch(n=>({...n,tags:t}))}/>
+  <input value=${note.title} onChange=${e=>patch(n=>({...n,title:e.target.value}))} placeholder="Nombre del día" className="w-full bg-transparent text-3xl font-bold outline-none"/>
+  <${RoutineField} tags=${note.tags||[]} all=${all} need=${need} onSave=${t=>{patch(n=>({...n,tags:t}));if(t[0]&&onRoutine)onRoutine(t[0])}}/>
   ${dl&&html`<div className="rounded-2xl bg-neutral-200 text-black px-4 py-3 text-sm"><b>Semana de descarga.</b> Mitad de series, −10 % de peso y RPE 6–7 (te sobran 3–4 reps).</div>`}
   <datalist id="exnames">${names.map(x=>html`<option key=${x} value=${x}/>`)}</datalist>
   ${note.blocks.map((b,i)=>html`<${Block} key=${b.id} warm=${b.id===(note.blocks.find(x=>x.type==='exercise')||{}).id} b=${b} i=${i} n=${note.blocks.length} set=${setBlock} del=${delBlock} move=${move} remember=${remember} dl=${dl} hist=${b.type==='exercise'?histOf(note,b.name):null} best=${b.type==='exercise'&&note.best?note.best[norm(b.name)]:null}/>`)}
-  ${note.blocks.length===0&&html`<p className="mut py-6 text-center">Rutina vacía. Añade un ejercicio abajo.</p>`}
+  ${note.blocks.length===0&&html`<p className="mut py-6 text-center">Día vacío. Añade un ejercicio abajo.</p>`}
   <div className="grid grid-cols-3 gap-3">${A('exercise','Ejercicio','ex')}${A('todo','Checklist','ck')}${A('text','Nota','tx')}</div>
   ${hasEx&&html`<button onClick=${()=>setFin(true)} className="btn-w h-14 w-full flex items-center justify-center gap-2">${I(P.flag,18)}Terminar entreno</button>`}
   ${fin&&html`<${Summary} note=${note} all=${all} cfg=${cfg} meas=${meas} dl=${dl} onSave=${()=>patch(n=>finishNote(n,dl))} close=${()=>setFin(false)}/>`}
@@ -1533,7 +1547,9 @@ function App(){
  const hasDone=n=>!!n&&n.blocks.some(b=>(b.sets||[]).some(x=>x.done));
  const [ask,setAsk]=useState(false);
  const leaveNow=()=>{setAsk(false);if(note&&isEmpty(note))drop(note.id);setAid(null);window.scrollTo(0,0)};
- const leave=()=>{if(hasDone(note)){setAsk(true);return}leaveNow()};
+ const [needR,setNeedR]=useState(false);
+ useEffect(()=>setNeedR(false),[aid]);
+ const leave=()=>{if(note&&!isEmpty(note)&&!(note.tags||[]).length){setNeedR(true);window.scrollTo({top:0,behavior:'smooth'});return}if(hasDone(note)){setAsk(true);return}leaveNow()};
  /* Gesto de iPhone: deslizar desde el borde izquierdo para volver */
  const sw=useRef(null),wrap=useRef(null);
  const tStart=e=>{const t=e.touches[0];sw.current=(e.touches.length===1&&t.clientX<=28)?{x:t.clientX,y:t.clientY,t:Date.now(),dx:0,on:false}:null};
@@ -1571,7 +1587,7 @@ function App(){
  const Tile=(v,l)=>html`<div className="card p-4 text-center pop-in"><div className="text-2xl font-semibold num">${typeof v==='number'?html`<${CountUp} to=${v}/>`:v}</div><div className="text-sm mut">${l}</div></div>`;
  /* El gesto se escucha en toda la pantalla, también en el margen del borde */
  return html`<div className="mx-auto max-w-xl px-4 pt-6 min-h-screen" style=${{paddingBottom:note?96:'calc(env(safe-area-inset-bottom,0px) + 112px)'}} onTouchStart=${note?tStart:null} onTouchMove=${note?tMove:null} onTouchEnd=${note?tEnd:null} onTouchCancel=${note?tEnd:null}>
-  ${note?html`<div key="editor" ref=${wrap} className="bg-black min-h-screen"><${Editor} key=${note.id} note=${note} all=${notes} cfg=${cfg} meas=${cloud.meas} dl=${dl} patch=${patch} onBack=${leave} onDup=${dup} onDel=${()=>{drop(aid);setAid(null);window.scrollTo(0,0)}}/></div>`:
+  ${note?html`<div key="editor" ref=${wrap} className="bg-black min-h-screen"><${Editor} key=${note.id} note=${note} all=${notes} cfg=${cfg} meas=${cloud.meas} dl=${dl} patch=${patch} need=${needR} onRoutine=${t=>{if(!pinTags(notes,cfg).length)cloud.setCfg({pins:[t],pinSel:t})}} onBack=${leave} onDup=${dup} onDel=${()=>{drop(aid);setAid(null);window.scrollTo(0,0)}}/></div>`:
   html`<div key=${'tab-'+tab} className=${'space-y-3 '+(tabDir>0?'push-in':'push-l')}>
    ${tab==='home'&&html`<div className="space-y-3">
    <div className="flex items-end justify-between gap-3 px-1 pb-1">
@@ -1584,7 +1600,7 @@ function App(){
    <h2 className="text-xl font-semibold px-1 pt-3">Tus rutinas</h2>
    ${(allTags.includes('Rutina A')||allTags.includes('Rutina C')||allTags.includes('Antiguas'))&&html`<p className="text-xs mut px-1 -mt-1">${[allTags.includes('Rutina A')||allTags.includes('Rutina C')?'Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia».':'',allTags.includes('Antiguas')?'Tus rutinas de antes están en «Antiguas», con su historial.':''].filter(Boolean).join(' ')}</p>`}
    ${day&&html`<div className="flex items-center justify-between px-1 text-sm"><span className="mut">Rutinas del ${new Date(day).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</span><button onClick=${()=>setDay(null)} className="text-neutral-300 underline">Quitar filtro</button></div>`}
-   <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder="Buscar rutina o etiqueta" className="field w-full h-12 px-4"/>
+   <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder="Buscar día o rutina" className="field w-full h-12 px-4"/>
    ${allTags.length>0&&html`<div className="flex gap-2 flex-wrap">
     ${allTags.map(t=>html`<button key=${t} onClick=${()=>{setOrdering(false);setTag(ft===t?null:t)}} className=${'h-9 px-4 rounded-full text-sm '+(ft===t?'bg-neutral-200 text-black font-semibold':'chip mut')}>${t}</button>`)}
     <button onClick=${()=>{setOrdering(false);setTag(null)}} className=${'h-9 px-4 rounded-full text-sm '+(!ft?'bg-neutral-200 text-black font-semibold':'chip mut')}>Todas</button>
