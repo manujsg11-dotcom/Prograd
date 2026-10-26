@@ -456,6 +456,7 @@ const endDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(!b.dl)return b;ch=
 const CFG0={v:0,plan:'A',pins:null,pinSel:'',deload:0,lastDeload:0,lastExport:0,at:0};
 const loadCfg=()=>{try{const c=JSON.parse(localStorage.getItem('gym-cfg')||'null');if(c&&typeof c==='object')return{...CFG0,...c}}catch(e){}return{...CFG0}};
 const loadMeas=()=>{try{const m=JSON.parse(localStorage.getItem('gym-meas')||'[]');if(Array.isArray(m))return m}catch(e){}return[]};
+const BOOT_OLD=!!(window.claude&&window.claude.use)||(()=>{try{return !!(localStorage.getItem('gym-notes-v1')||localStorage.getItem('gym-meas')||localStorage.getItem('gym-cfg'))}catch(e){return true}})();
 let SEEDMAP={};
 const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const v=JSON.parse(r);if(Array.isArray(v))return v}}catch(e){}if(window.claude)return[];const s=seed();SEEDMAP=Object.fromEntries(s.map(n=>[n.id,n.updated]));try{localStorage.setItem('gym-seed-ids',JSON.stringify(SEEDMAP))}catch(e){}return s};
 const N=v=>{const x=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(x)?x:0};
@@ -1331,7 +1332,7 @@ const SHAKES={
  '2':{name:'Volumen',kcal:770,it:{...BASE,milk:'300 ml entera',oats:'70 g',pb:'1 cucharada sopera (15 g)'},ch:['Avena: 45 g → 70 g (más hidratos)','Leche semidesnatada → entera (más grasa)','Crema de cacahuete: 1 cucharadita → 1 cucharada sopera (más grasa)']}};
 const clampL=x=>Math.max(-2,Math.min(2,Math.round(x||0)));
 const shakeOf=ms=>ms.length?clampL(ms[ms.length-1].shake):0;
-function ShakeBox({level,prev,onSet}){
+function LegacyShake({level,prev,onSet}){
  const s=SHAKES[String(level)],moved=prev!=null&&prev!==level;
  return html`<div className="field p-3">
   <div className="flex items-center justify-between gap-2">
@@ -1349,6 +1350,112 @@ function ShakeBox({level,prev,onSet}){
   <p className="text-[11px] mut mt-2">La proteína y la creatina no cambian. Calorías aproximadas. Haz un cambio y espera a la siguiente medición.</p>
  </div>`;
 }
+/* ===== Batido propio (instalaciones nuevas): receta por ingredientes que se ajusta por niveles ===== */
+const SI={whey:['Proteína en polvo','cazo',120,'p'],msemi:['Leche semidesnatada','ml',0.46,'m'],ment:['Leche entera','ml',0.65,'m'],mdes:['Leche desnatada','ml',0.35,'m'],msoja:['Bebida de soja','ml',0.33,'x'],mavena:['Bebida de avena','ml',0.45,'x'],agua:['Agua','ml',0,'x'],
+ oats:['Avena','g',3.7,'c',10,120],banana:['Plátano','unidad',105,'c',0.5,2],honey:['Miel','cucharadita',21,'c',1,3],dates:['Dátiles','unidad',20,'c',1,6],berries:['Frutos rojos','g',0.5,'x'],
+ pb:['Crema de cacahuete','g',6,'f',5,30],nuts:['Frutos secos','g',6,'f',5,30],yog:['Yogur griego','g',1.2,'x'],cocoa:['Cacao puro','g',3.5,'x'],crea:['Creatina','g',0,'x'],cin:['Canela','al gusto',0,'x'],other:['Otro','',0,'o']};
+const SI_ORDER=['whey','msemi','ment','mdes','msoja','mavena','agua','oats','banana','honey','dates','berries','pb','nuts','yog','cocoa','crea','cin','other'];
+const MILK_UP={mdes:'msemi',msemi:'ment'},MILK_DN={ment:'msemi',msemi:'mdes'};
+const siName=it=>it.id==='other'?(it.name||'Otro'):SI[it.id][0];
+const siKcal=it=>it.id==='other'?N(it.kcal):N(it.q)*SI[it.id][2];
+const siQty=it=>{if(it.id==='other')return it.qty||'';const u=SI[it.id][1],q=N(it.q);if(u==='al gusto')return'al gusto';if(u==='g'||u==='ml')return fN(q)+' '+u;if(u==='cazo')return fN(q)+(q===1?' cazo':' cazos');if(u==='cucharadita')return fN(q)+(q===1?' cucharadita':' cucharaditas');return fN(q)+(q===1?' unidad':' unidades')};
+const shakeMode=cfg=>cfg.shake==='custom'||cfg.shake==='off'||cfg.shake==='legacy'?cfg.shake:cfg.shake==='none'?'none':(BOOT_OLD?'legacy':'none');
+const RLV={'-2':'Mucho más ligero','-1':'Más ligero','0':'Tu batido de siempre','1':'Más calorías','2':'Volumen'};
+function adjustRecipe(items,level){
+ const it=items.map((x,i)=>({...x,q:N(x.q),i,base:x.id}));
+ let rem=level*120;if(!rem)return it;
+ const role=x=>x.id==='other'?'o':SI[x.id][3],st=x=>SI[x.id][4],mx=x=>Math.max(SI[x.id][5],x.q);
+ const up=(list,budget)=>{let used=0;list.forEach(x=>{const k=st(x)*SI[x.id][2];while(x.q+st(x)<=mx(x)+1e-9&&budget-used>k/2){x.q=rnd(x.q+st(x));used+=k}});return used};
+ const dn=(list,need)=>{let used=0;list.forEach(x=>{const k=st(x)*SI[x.id][2];while(x.q-st(x)>=-1e-9&&need-used>k/2){x.q=rnd(Math.max(0,x.q-st(x)));used+=k}});return used};
+ const carbs=()=>['oats','banana','honey','dates'].flatMap(id=>it.filter(x=>x.id===id));
+ if(rem>0){
+  if(!carbs().length)it.push({id:'oats',q:0,i:it.length,base:'oats',added:true});
+  rem-=up(carbs(),rem*0.65);
+  const m=it.find(x=>MILK_UP[x.id]);
+  if(m&&rem>40){const to=MILK_UP[m.id],d=m.q*(SI[to][2]-SI[m.id][2]);m.id=to;rem-=d}
+  const fats=it.filter(x=>role(x)==='f');
+  if(fats.length)rem-=up(fats,rem);
+  if(rem>20)rem-=up(carbs(),rem);
+ }else{
+  let need=-rem;
+  need-=dn(it.filter(x=>role(x)==='f'),need);
+  need-=dn(['honey','dates','oats','banana'].flatMap(id=>it.filter(x=>x.id===id)),need);
+  const m=it.find(x=>MILK_DN[x.id]);
+  if(m&&need>40){const to=MILK_DN[m.id];need-=m.q*(SI[m.id][2]-SI[to][2]);m.id=to}
+  it.forEach(x=>{if(x.id==='oats'&&x.q>0&&x.q<15)x.q=0});
+ }
+ return it;
+}
+const recipeChanges=(base,adj)=>{const out=[];adj.forEach(a=>{const b=base[a.i],why=r=>r==='f'?' (más grasa)':' (más hidratos)',whyL=r=>r==='f'?' (menos grasa)':' (menos hidratos)';
+ if(a.added){if(a.q>0)out.push('Añade '+siQty(a).replace(/^1 unidad$/,'1')+' de '+siName(a).toLowerCase()+' (más hidratos)');return}
+ if(a.id!==b.id){const up=SI[a.id][2]>SI[b.id][2];out.push(SI[b.id][0]+' → '+SI[a.id][0].replace(/^Leche /,'')+(up?' (más grasa)':' (menos grasa)'));return}
+ if(a.q===N(b.q))return;const r=SI[a.id][3];
+ if(a.q<=0){out.push('Quita '+({banana:'el ',dates:'los ',nuts:'los '}[a.id]||'la ')+siName(a).toLowerCase()+whyL(r));return}
+ out.push(siName(a)+': '+siQty(b)+' → '+siQty(a)+(a.q>N(b.q)?why(r):whyL(r)))});
+ return out};
+function RecipeSheet({cfg,setCfg,close}){
+ const start=(cfg.recipe&&cfg.recipe.length?cfg.recipe:[{id:'whey',q:1},{id:'msemi',q:300}]).map(x=>({...x,q:x.q==null?'':String(x.q).replace('.',','),k:uid()}));
+ const [rows,setRows]=useState(start);
+ const set=(k,p)=>setRows(rs=>rs.map(r=>r.k===k?{...r,...p}:r));
+ const used=new Set(rows.map(r=>r.id));
+ const add=()=>{const id=SI_ORDER.find(x=>!used.has(x)&&x!=='other')||'other';setRows(rs=>[...rs,{id,q:SI[id][1]==='al gusto'?'':id==='oats'?'40':'1',k:uid()}])};
+ const clean=rows.filter(r=>r.id==='other'?(r.name||'').trim():SI[r.id][1]==='al gusto'||N(r.q)>0).map(r=>r.id==='other'?{id:'other',name:r.name.trim(),qty:(r.qty||'').trim(),kcal:N(r.kcal)}:{id:r.id,q:SI[r.id][1]==='al gusto'?0:N(r.q)});
+ const total=Math.round(clean.reduce((a,x)=>a+siKcal(x),0));
+ const fld='field h-11 px-3 text-sm';
+ return html`<${Sheet} title="Tu batido" close=${close}>${shut=>html`<div className="space-y-3">
+  <p className="text-sm mut">Pon tu batido de siempre. Según tus medidas, la app lo subirá o bajará de calorías tocando los hidratos y la grasa. La proteína y la creatina no cambian.</p>
+  ${rows.map(r=>html`<div key=${r.k} className="field p-2 space-y-2">
+   <div className="flex gap-2 items-center">
+    <select value=${r.id} onChange=${e=>set(r.k,{id:e.target.value})} className=${fld+' bg-transparent'} style=${{flex:'1 1 0',minWidth:0}}>${SI_ORDER.map(id=>html`<option key=${id} value=${id}>${SI[id][0]}</option>`)}</select>
+    ${r.id!=='other'&&SI[r.id][1]!=='al gusto'&&html`<input value=${r.q} onChange=${e=>set(r.k,{q:e.target.value})} inputMode="decimal" className=${fld+' text-right num'} style=${{width:64,flex:'none'}}/><span className="text-xs mut" style=${{width:30,flex:'none'}}>${SI[r.id][1]==='unidad'?'ud.':SI[r.id][1]==='cucharadita'?'cdta.':SI[r.id][1]}</span>`}
+    ${r.id!=='other'&&SI[r.id][1]==='al gusto'&&html`<span className="text-xs mut text-right" style=${{width:98,flex:'none',paddingRight:8}}>al gusto</span>`}
+    <button aria-label="Quitar" onClick=${()=>setRows(rs=>rs.filter(x=>x.k!==r.k))} className="h-9 w-9 shrink-0 grid place-items-center rounded-full chip text-neutral-300">${I(P.x,15)}</button>
+   </div>
+   ${r.id==='other'&&html`<div className="flex gap-2"><input value=${r.name||''} onChange=${e=>set(r.k,{name:e.target.value})} placeholder="Nombre" className=${fld} style=${{flex:'1 1 0',minWidth:0}}/><input value=${r.qty||''} onChange=${e=>set(r.k,{qty:e.target.value})} placeholder="Cantidad" className=${fld} style=${{width:84,flex:'none'}}/><input value=${r.kcal==null?'':r.kcal} onChange=${e=>set(r.k,{kcal:e.target.value})} placeholder="kcal" inputMode="decimal" className=${fld+' text-right num'} style=${{width:64,flex:'none'}}/></div>`}
+  </div>`)}
+  <button onClick=${add} className="chip h-11 w-full rounded-full text-sm text-neutral-200 flex items-center justify-center gap-1.5">${I(P.plus,15)}Añadir ingrediente</button>
+  <div className="flex justify-between text-sm px-1"><span className="mut">Total aproximado</span><span className="num font-semibold">~${total} kcal</span></div>
+  <button disabled=${!clean.length} onClick=${()=>{setCfg({shake:'custom',recipe:clean});shut()}} className=${'btn-w h-14 w-full '+(clean.length?'':'opacity-40')}>Guardar batido</button>
+  <button onClick=${()=>{setCfg({shake:'off'});shut()}} className="h-11 w-full text-sm mut underline">No tomo batido</button>
+ </div>`}<//>`;
+}
+function ShakeBox({level,prev,onSet,cfg,setCfg}){
+ const mode=cfg?shakeMode(cfg):'legacy';
+ const [ed,setEd]=useState(false);
+ if(mode==='legacy')return html`<${LegacyShake} level=${level} prev=${prev} onSet=${onSet}/>`;
+ const sheet=ed&&setCfg&&ReactDOM.createPortal(html`<${RecipeSheet} cfg=${cfg} setCfg=${setCfg} close=${()=>setEd(false)}/>`,document.body);
+ const ctl=onSet&&html`<div className="chip flex items-center rounded-full p-0.5 shrink-0">
+    <button aria-label="Menos calorías" onClick=${()=>onSet(level-1)} className=${'h-8 w-8 grid place-items-center rounded-full text-neutral-200 '+(level<=-2?'opacity-25':'')}>${I('M6 12h12',16)}</button>
+    <span className="text-xs mut num w-6 text-center">${level>0?'+'+level:level}</span>
+    <button aria-label="Más calorías" onClick=${()=>onSet(level+1)} className=${'h-8 w-8 grid place-items-center rounded-full text-neutral-200 '+(level>=2?'opacity-25':'')}>${I(P.plus,16)}</button></div>`;
+ const moved=prev!=null&&prev!==level;
+ if(mode==='none')return html`<div className="field p-3">
+  <div className="font-semibold">Tu batido</div>
+  <p className="text-sm mut mt-1">Ponlo y la app lo ajustará según tus medidas: más calorías si te quedas corto, menos si te pasas.</p>
+  ${setCfg&&html`<div className="flex gap-2 mt-3"><button onClick=${()=>setEd(true)} className="btn-w h-11 flex-1 text-sm">Configurar batido</button><button onClick=${()=>setCfg({shake:'off'})} className="chip h-11 px-4 rounded-full text-sm text-neutral-200">No tomo</button></div>`}${sheet}
+ </div>`;
+ if(mode==='off'){const kc=level*120;return html`<div className="field p-3">
+  <div className="flex items-center justify-between gap-2"><div className="min-w-0"><div className="text-xs mut">Sin batido</div><div className="font-semibold">${kc===0?'Come como siempre':kc>0?'Come ~'+kc+' kcal más al día':'Come ~'+(-kc)+' kcal menos al día'}</div></div>${ctl}</div>
+  ${moved&&html`<div className="rounded-xl bg-neutral-200 text-black text-sm font-medium px-3 py-2 mt-2">${level>prev?'Sube unas 120 kcal al día':'Baja unas 120 kcal al día'}</div>`}
+  <p className="text-[11px] mut mt-2">Comparado con lo que comías al empezar. Por ejemplo, 120 kcal son 30 g de avena o 20 g de frutos secos.</p>
+  ${setCfg&&html`<button onClick=${()=>setEd(true)} className="text-xs mut underline mt-2">Configurar un batido</button>`}${sheet}
+ </div>`}
+ const base=cfg.recipe||[],adj=adjustRecipe(base,level),pv=prev!=null?adjustRecipe(base,prev):null,ch=recipeChanges(base,adj);
+ const kcal=Math.round(adj.reduce((a,x)=>a+siKcal(x),0)),pk=pv?Math.round(pv.reduce((a,x)=>a+siKcal(x),0)):0;
+ return html`<div className="field p-3">
+  <div className="flex items-center justify-between gap-2">
+   <div className="min-w-0"><div className="text-xs mut">Tu batido ahora</div><div className="font-semibold">${RLV[String(level)]} <span className="text-sm mut num">· ~${kcal} kcal</span></div></div>${ctl}
+  </div>
+  ${moved&&html`<div className="rounded-xl bg-neutral-200 text-black text-sm font-medium px-3 py-2 mt-2">${level>prev?'Sube el batido un paso':'Baja el batido un paso'} (antes: ~${pk} kcal)</div>`}
+  ${ch.length>0&&html`<ul className="mt-2 space-y-1">${ch.map((c,k)=>html`<li key=${k} className="text-sm text-white flex gap-2"><span className="mut">→</span><span>${c}</span></li>`)}</ul>`}
+  ${level!==0&&!ch.length&&html`<p className="text-sm mut mt-2">${level>0?'Tu receta no tiene de dónde subir: añade avena, plátano o crema de cacahuete.':'Tu receta ya está al mínimo: solo queda la proteína.'}</p>`}
+  <div className="mt-2 pt-2 border-t border-white/5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+   ${adj.filter(a=>!(a.added&&a.q<=0)).map(a=>{const b=base[a.i],diff=a.added||a.id!==b.id||a.q!==N(b.q),gone=!a.added&&a.q<=0&&SI[a.id]&&SI[a.id][1]!=='al gusto'&&a.id!=='other',c=gone?'mut line-through':diff?'text-white font-medium':'text-neutral-400';return html`<${React.Fragment} key=${a.i}><span className=${c}>${siName(a)}</span><span className=${'text-right num '+c}>${gone?siQty(b):siQty(a)}</span><//>`})}
+  </div>
+  <div className="flex items-center justify-between mt-2"><p className="text-[11px] mut">La proteína y la creatina no cambian. Calorías aproximadas.</p>${setCfg&&html`<button onClick=${()=>setEd(true)} className="text-xs mut underline shrink-0 ml-2">Editar receta</button>`}</div>${sheet}
+ </div>`;
+}
+const tipNoShake=t=>t.replace(/^Baja el batido un paso: unas 100 kcal menos al día\./,'Come unas 100–120 kcal menos al día.').replace(/^Baja el batido un paso y/,'Come unas 100–120 kcal menos al día y').replace(/^Sigue comiendo igual y mantén el batido\./,'Sigue comiendo igual.').replace(/^Mantén el batido\. Si quieres crecer más rápido, súbelo un paso\./,'Sigue comiendo igual. Si quieres crecer más rápido, come unas 120 kcal más al día.').replace(/^Sube el batido un paso: unas/,'Come unas').replace(/^Sube el batido dos pasos: unas 200 kcal/,'Come unas 200–250 kcal');
 
 function Spark({ms,k}){
  const v=ms.filter(m=>typeof m[k]==='number');if(v.length<2)return null;
@@ -1366,12 +1473,12 @@ function Spark({ms,k}){
   <div className="flex justify-between text-[11px] mut num"><span>mín. ${fN(lo)}</span><span>máx. ${fN(hi)}</span></div>
  </div>`;
 }
-function AdviceBox({a}){
+function AdviceBox({a,off}){
  const hl=a.lv==='warn';
  return html`<div className=${'rounded-2xl p-3 '+(hl?'bg-neutral-200 text-black':'field')}>
   <div className="flex items-center gap-2"><span className=${'h-7 w-7 shrink-0 rounded-full grid place-items-center '+(hl?'bg-black text-white':'chip text-neutral-200')}>${I(a.lv==='ok'?P.check:a.lv==='warn'?'M12 8v5M12 16.5v.5':P.trend,15)}</span><span className="font-semibold">${a.title}</span></div>
   <p className=${'text-sm mt-1.5 leading-snug '+(hl?'text-neutral-800':'text-neutral-300')}>${a.text}</p>
-  ${a.tips.length>0&&html`<ul className="mt-2 space-y-1">${a.tips.map((t,k)=>html`<li key=${k} className=${'text-sm flex gap-2 '+(hl?'text-neutral-800':'text-neutral-300')}><span>·</span><span>${t}</span></li>`)}</ul>`}
+  ${a.tips.length>0&&html`<ul className="mt-2 space-y-1">${a.tips.map((t,k)=>html`<li key=${k} className=${'text-sm flex gap-2 '+(hl?'text-neutral-800':'text-neutral-300')}><span>·</span><span>${off?tipNoShake(t):t}</span></li>`)}</ul>`}
   ${a.basis&&html`<p className=${'text-[11px] mt-2 '+(hl?'text-neutral-600':'mut')}>${a.basis}. Guía general, orientativa.</p>`}
  </div>`;
 }
@@ -1384,8 +1491,8 @@ function MeasureCard({ms,cloud,cloudOk,onNew,onHist}){
   ${due?html`<div className="flex items-center justify-between gap-3 mb-3"><div><div className="font-semibold">Toca medirte</div><div className="text-sm mut">${last?'La última vez fue '+ago(last.t)+'.':'Peso y cintura como mínimo.'}</div></div><button onClick=${onNew} className="btn-w h-10 px-5 text-sm shrink-0">Medirme</button></div>`
   :html`<div className="mb-3"><div className="flex justify-between text-sm mb-1.5"><span>Próxima medición en ${left} ${left===1?'día':'días'}</span><span className="mut num">${d}/${ME_EVERY}</span></div><div className="h-1.5 rounded-full bg-[#262626] overflow-hidden"><div className="grow h-full rounded-full bg-neutral-200" style=${{width:(d/ME_EVERY*100)+'%'}}></div></div></div>`}
   ${shown.length>0&&html`<div className="grid grid-cols-3 gap-2 mb-3">${shown.map(([k,l,u])=>{const dv=prev&&typeof prev[k]==='number'?last[k]-prev[k]:null;return html`<div key=${k} className="chip rounded-2xl p-2.5 text-center"><div className="text-lg font-semibold num">${fN(last[k])}<span className="text-xs mut"> ${u}</span></div><div className="text-xs mut">${l}${dv!=null?html` · <span className="num text-neutral-300">${sgn(dv)}</span>`:''}</div></div>`})}</div>`}
-  <${AdviceBox} a=${a}/>
-  <div className="mt-3"><${ShakeBox} level=${lvl} onSet=${setL}/></div>
+  <${AdviceBox} a=${a} off=${shakeMode(cloud.cfg)==='off'}/>
+  <div className="mt-3"><${ShakeBox} level=${lvl} onSet=${setL} cfg=${cloud.cfg} setCfg=${cloud.setCfg}/></div>
   ${!cloudOk&&html`<p className="text-xs mut mt-3">Las medidas se guardan en la nube: abre la app con tu cuenta de Claude.</p>`}
   <div className="flex gap-2 mt-3">${!due&&html`<button onClick=${onNew} className="chip h-11 px-5 flex-1 rounded-full text-sm text-neutral-200">Medirme</button>`}
    ${ms.length>0&&html`<button onClick=${onHist} className=${'chip h-11 px-5 rounded-full text-sm text-neutral-200 '+(due?'flex-1':'')}>Historial</button>`}</div>
@@ -1406,7 +1513,7 @@ function MeasureNew({ms,cloud,close}){
  const [v,setV]=useState({}),[help,setHelp]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState(null),[done,setDone]=useState(null);
  const vals=Object.fromEntries(Object.entries(v).map(([k,x])=>[k,N(x)]).filter(([k,x])=>x>0));
  const save=async()=>{setErr(null);setBusy(true);try{const e={kind:'measure',id:uid(),t:Date.now(),...vals},pl=shakeOf(ms);e.shake=clampL(pl+(advice([...ms,e]).d||0));await cloud.saveMeasure(e);setDone({all:[...ms,e],prev:pl})}catch(x){setErr(x&&x.code==='nocloud'?'Para guardar medidas tienes que abrir la app con tu cuenta de Claude.':'No se ha podido guardar. Prueba otra vez.')}finally{setBusy(false)}};
- return html`<${Sheet} title="Medirme" close=${close}>${shut=>done?html`<div className="space-y-4"><${AdviceBox} a=${advice(done.all)}/><${ShakeBox} level=${shakeOf(done.all)} prev=${done.prev}/><button onClick=${shut} className="btn-w h-14 w-full">Listo</button></div>`
+ return html`<${Sheet} title="Medirme" close=${close}>${shut=>done?html`<div className="space-y-4"><${AdviceBox} a=${advice(done.all)} off=${shakeMode(cloud.cfg)==='off'}/><${ShakeBox} level=${shakeOf(done.all)} prev=${done.prev} cfg=${cloud.cfg}/><button onClick=${shut} className="btn-w h-14 w-full">Listo</button></div>`
   :html`<div className="space-y-3">
    <p className="text-sm mut">Mídete siempre igual: por la mañana, en ayunas y antes de entrenar. Con peso y cintura basta; el resto es opcional.</p>
    ${MEAS.map(([k,l,u,how,rec])=>html`<div key=${k} className="chip rounded-2xl p-3">
@@ -1535,6 +1642,7 @@ function App(){
  useEffect(()=>{try{localStorage.setItem(KEY,JSON.stringify(notes))}catch(e){}},[notes]);
  useEffect(()=>{try{localStorage.removeItem('gym-timer');localStorage.removeItem('gym-deload')}catch(e){}},[]);
  const cloud=useCloud(notes,setNotes),cfg=cloud.cfg,dl=!!cfg.deload;
+ useEffect(()=>{if(!cfg.shake)cloud.setCfg({shake:BOOT_OLD?'legacy':'none'})},[]);
  useEffect(()=>{const id=setTimeout(()=>{pushHeal(notes,cfg)},4000);return()=>clearTimeout(id)},[]);
  useEffect(()=>{setTag(PLANS[cfg.plan]?PLANS[cfg.plan].name:null)},[cfg.plan]);
  const [ph,setPh]=useState(null);
