@@ -2,7 +2,7 @@
 // Los archivos de vendor/ e icons/ se guardan una vez (cache-first).
 // index.html se pide siempre a la red primero: si hay internet recibes la última versión sola;
 // si no, se abre la copia guardada. Cambia VERSION solo si cambias archivos de vendor/ o icons/.
-const VERSION = 'prograd-v12';
+const VERSION = 'prograd-v13';
 const PUSH_SERVER = 'https://prograd-avisos.manujsg11.workers.dev';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icono-prograd-v3.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
