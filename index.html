@@ -432,7 +432,7 @@ const PLANS={
  A:{name:'Rutina A',sub:'4 días',days:[['Día 1 — Torso A',WT,TA],['Día 2 — Pierna A',WL+' '+CURL,LA],['Día 3 — Torso B',WT+' '+ABS,TB],['Día 4 — Pierna B',WL+' '+ABS,LB]]},
  C:{name:'Rutina C',sub:'3 días',days:[['Día 1 — Torso A',WT,TA],['Día 2 — Pierna',WL+' '+CURL+' '+ABS,LC],['Día 3 — Torso B',WT+' '+ABS,TB]]}};
 const planNotes=(kgOf=()=>'')=>{const now=Date.now(),out=[];['A','C'].forEach((p,pi)=>PLANS[p].days.forEach(([title,note,exs],i)=>out.push({id:uid(),title,tags:[PLANS[p].name],plan:p,day:i+1,updated:now-(pi*10+i)*1000,blocks:[txt(note),...exs.map(([n,t])=>ex2(n,{...t},kgOf(n,t)))]})));return out};
-const seed=()=>planNotes();
+const seed=()=>[];
 /* Paso a A y C conservando las rutinas antiguas (con su historial) y empezando con tus últimos pesos */
 const ALIAS={'press plano en maquina':['press banca','press plano','press banca maquina','press plano maquina'],'dominadas lastradas':['dominadas lastradas','dominadas'],'dominadas lastradas neutras':['dominadas lastradas neutras','dominadas lastradas','dominadas'],'press de hombro en maquina':['maquina press militar','press militar maquina','press hombro maquina','press de hombro'],'fondos lastrados':['fondos lastrados','fondos'],'press inclinado con mancuernas':['press inclinado mancuernas','press inclinado'],'elevaciones laterales':['elevaciones laterales','laterales en polea','laterales'],'bulgaras':['bulgaras mancuernas','bulgaras','sentadilla bulgara'],'prensa':['prensa'],'curl femoral tumbado':['curl femoral tumbado','femoral','curl femoral'],'extension de cuadriceps':['extension de cuadriceps','quadriceps','cuadriceps'],'gemelos':['gemelos']};
 function kgFrom(old,name,t){
@@ -1602,7 +1602,7 @@ function App(){
       <div className="rsub">${info(n)}${!ft&&n.tags.length>0?n.tags.map(t=>html`<span key=${t} className="rtag">${t}</span>`):''}</div>
       ${histTxt(n)&&html`<div className="rlast">${histTxt(n)}</div>`}</div>
      <span className="mut">${I(P.chev,18)}</span></button>`)}
-    ${!(ordering&&ft)&&shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':'Cargando tus rutinas…'}</p>`}
+    ${!(ordering&&ft)&&shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':cloud.mode==='cloud'&&cloud.st!=='ok'?'Cargando tus rutinas…':'Aún no tienes rutinas. Pulsa «Nueva» para crear la primera.'}</p>`}
    </div>
    </div>`}
    ${tab==='prog'&&html`<div className="space-y-3">
