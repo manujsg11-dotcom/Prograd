@@ -942,12 +942,27 @@ const stepFp=fp=>{fp=Math.max(0,Math.min(1,fp));const raw=fp*25,step=Math.min(24
 const stepOf=f=>stepFp(f);
 const rankName=r=>r.tier===8?'Radiante':RANKS[r.tier][0]+' '+r.div;
 const bodyW=meas=>{const v=(meas||[]).filter(m=>typeof m.kg==='number'&&m.kg>30);return v.length?v[v.length-1].kg:0};
+/* Icono de rango: disco dodecágono de 10 kg (opción A). La división va estampada donde pondría «10KG» */
+const RK_AB=['HIE','BRO','PLA','ORO','PTN','DIA','ASC','INM'];
+const dMix=(a,b,t)=>{const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),A=p(a),B=p(b);return'#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')};
+const dPoly=(n,r,rot)=>Array.from({length:n},(_,i)=>{const a=rot+i*2*Math.PI/n;return(50+r*Math.cos(a)).toFixed(2)+','+(50+r*Math.sin(a)).toFixed(2)}).join(' ');
+const dStar=r=>Array.from({length:10},(_,i)=>{const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*.45:r;return(50+rr*Math.cos(a)).toFixed(2)+','+(50+rr*Math.sin(a)).toFixed(2)}).join(' ');
 function RankBadge({r,size}){
- const c=RANKS[r.tier][1],h=size*1.1,rad=r.tier===8;
- return html`<svg width=${size} height=${h} viewBox="0 0 40 44" aria-hidden="true" style=${{flexShrink:0,filter:rad?'drop-shadow(0 0 6px rgba(255,220,120,.7))':'none'}}>
-  <path d="M20 2 L36 8 V22 C36 33 28 40 20 43 C12 40 4 33 4 22 V8 Z" fill=${c} fillOpacity=${rad?.35:.2} stroke=${c} strokeWidth="2.2" strokeLinejoin="round"/>
-  ${rad?html`<path d="M20 11l2.6 6.4 6.9.5-5.3 4.5 1.7 6.7L20 25.4 14.1 29l1.7-6.7-5.3-4.5 6.9-.5z" fill=${c}/>`
-  :Array.from({length:r.div},(_,i)=>html`<path key=${i} d=${'M12 '+(30-i*7)+' L20 '+(23-i*7)+' L28 '+(30-i*7)} fill="none" stroke=${c} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>`)}
+ const c=RANKS[r.tier][1],rad=r.tier===8,small=size<40,id='rb'+React.useId().replace(/[^a-zA-Z0-9]/g,'');
+ const slot=rot=>html`<g key=${rot} transform=${'rotate('+rot+' 50 50)'}><path d="M33 17 Q50 11 67 17 L62 28 Q50 24 38 28 Z" fill="#050505" stroke=${c} strokeWidth=${small?2:1.4} strokeLinejoin="round"/></g>`;
+ return html`<svg width=${size} height=${size} viewBox="0 0 100 100" aria-hidden="true" style=${{flexShrink:0,overflow:'visible',filter:rad?'drop-shadow(0 0 6px rgba(255,217,122,.75))':'none'}}>
+  <defs>
+   <radialGradient id=${'g'+id} cx="40%" cy="35%" r="75%"><stop offset="0" stopColor=${dMix('#1b1d21',c,rad?.38:.2)}/><stop offset="1" stopColor=${dMix('#0b0c0e',c,rad?.18:.06)}/></radialGradient>
+   <linearGradient id=${'m'+id} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e9ecef"/><stop offset=".5" stopColor="#9aa0a7"/><stop offset="1" stopColor="#cfd3d8"/></linearGradient>
+  </defs>
+  <polygon points=${dPoly(12,47,Math.PI/12)} fill=${'url(#g'+id+')'} stroke=${c} strokeWidth=${small?4:3} strokeLinejoin="round"/>
+  ${!small&&Array.from({length:12},(_,i)=>{const a=i*Math.PI/6+Math.PI/12;return html`<line key=${i} x1=${(50+46*Math.cos(a)).toFixed(1)} y1=${(50+46*Math.sin(a)).toFixed(1)} x2=${(50+39*Math.cos(a)).toFixed(1)} y2=${(50+39*Math.sin(a)).toFixed(1)} stroke=${dMix('#000000',c,.35)} strokeWidth="1"/>`})}
+  <polygon points=${dPoly(12,39,Math.PI/12)} fill="none" stroke=${dMix('#000000',c,.45)} strokeWidth="1.2"/>
+  ${slot(-35)}${slot(145)}
+  <circle cx="50" cy="50" r="17" fill="none" stroke=${dMix('#000000',c,.5)} strokeWidth="1.2"/>
+  <circle cx="50" cy="50" r="12" fill=${'url(#m'+id+')'} stroke="#0a0a0a" strokeWidth="1"/><circle cx="50" cy="50" r="6" fill="#050505"/>
+  ${rad?html`<polygon points=${dStar(5.1)} fill=${c}/>`
+  :html`<text x="27" y="73" transform="rotate(38 27 73)" fontFamily="'Barlow Condensed','Arial Narrow',sans-serif" fontWeight="800" fontSize=${small?20:15} fill=${c} textAnchor="middle">${small?r.div:r.div+' · '+RK_AB[r.tier]}</text>`}
  </svg>`;
 }
 function RanksCard({notes,cfg,meas}){
@@ -958,7 +973,7 @@ function RanksCard({notes,cfg,meas}){
  const bar=(pct,h,c)=>html`<div style=${{height:h,borderRadius:h/2,background:'#2a2a2a',overflow:'hidden'}}><div className="grow" style=${{height:h,width:pct+'%',borderRadius:h/2,background:c,transition:'width .4s'}}></div></div>`;
  return html`<div className="card p-4">
   <button onClick=${()=>setOpen(o=>!o)} style=${{display:'flex',alignItems:'center',gap:12,width:'100%',textAlign:'left'}} aria-expanded=${open}>
-   ${has?html`<${RankBadge} r=${gr} size=${52}/>`:html`<div style=${{width:52,height:57,display:'grid',placeItems:'center',color:'#555',fontSize:22,fontWeight:800}}>?</div>`}
+   ${has?html`<${RankBadge} r=${gr} size=${52}/>`:html`<div style=${{width:52,height:52,display:'grid',placeItems:'center',color:'#555',fontSize:22,fontWeight:800}}>?</div>`}
    <div style=${{flex:1,minWidth:0}}>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6,gap:8}}><span style=${{fontWeight:700,color:has?RANKS[gr.tier][1]:'#8a8f98'}}>${has?rankName(gr):'Sin clasificar'}</span><span className="text-xs mut">Rango global</span></div>
     ${bar(has?(gr.step>=24?100:Math.round(gr.frac*100)):0,8,has?RANKS[gr.tier][1]:'#555')}
