@@ -473,6 +473,8 @@ const CFG0={v:0,plan:'A',pins:null,pinSel:'',deload:0,lastDeload:0,lastExport:0,
 const loadCfg=()=>{try{const c=JSON.parse(localStorage.getItem('gym-cfg')||'null');if(c&&typeof c==='object')return{...CFG0,...c}}catch(e){}return{...CFG0}};
 const loadMeas=()=>{try{const m=JSON.parse(localStorage.getItem('gym-meas')||'[]');if(Array.isArray(m))return m}catch(e){}return[]};
 const BOOT_OLD=!!(window.claude&&window.claude.use)||(()=>{try{return !!(localStorage.getItem('gym-notes-v1')||localStorage.getItem('gym-meas')||localStorage.getItem('gym-cfg'))}catch(e){return true}})();
+const IS_AND=/Android/i.test(navigator.userAgent||'');
+const INSTALL_TXT=IS_AND?'Chrome › menú ⋮ › Instalar app o Añadir a pantalla de inicio':'Safari › Compartir › Añadir a pantalla de inicio';
 let SEEDMAP={};
 const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const v=JSON.parse(r);if(Array.isArray(v))return v}}catch(e){}if(window.claude)return[];const s=seed();SEEDMAP=Object.fromEntries(s.map(n=>[n.id,n.updated]));try{localStorage.setItem('gym-seed-ids',JSON.stringify(SEEDMAP))}catch(e){}return s};
 const N=v=>{const x=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(x)?x:0};
@@ -1205,7 +1207,7 @@ function NotifCard({notes,cfg}){
   setMsg(null);setBusy(true);
   try{
    const perm=await Notification.requestPermission();
-   if(perm!=='granted'){setMsg('Sin permiso no puedo avisarte. Puedes darlo en Ajustes del iPhone › Notificaciones › Prograd.');return}
+   if(perm!=='granted'){setMsg(IS_AND?'Sin permiso no puedo avisarte. Puedes darlo en Ajustes del móvil › Aplicaciones › Prograd › Notificaciones.':'Sin permiso no puedo avisarte. Puedes darlo en Ajustes del iPhone › Notificaciones › Prograd.');return}
    const reg=await navigator.serviceWorker.ready;
    let sub=await reg.pushManager.getSubscription();
    if(!sub){const {clave}=await api('/clave');sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64key(clave)})}
@@ -1234,13 +1236,13 @@ function NotifCard({notes,cfg}){
   <div style=${row}><div><div style=${{fontWeight:600}}>Recordatorio de entreno</div><div className="text-xs mut" style=${{marginTop:2}}>Te dice qué toca, tu última marca y tu racha.</div></div>
    ${listo?Tog(p.on,v=>v?activar():desactivar()):''}</div>
   ${listo&&p.on&&(()=>{const nx=nextAviso(p,!!salta),bad=srv==='sin-sub'||srv==='sin-permiso';
-   const txt={comprobando:'Comprobando con el servidor…',ok:'Conectado.',renovada:'Se había perdido la conexión con el servidor y la he renovado.',error:'No he podido comprobar el servidor ahora mismo. Si tienes internet, prueba más tarde.','sin-sub':'Este móvil ya no tiene los avisos activos (pasa si quitas y vuelves a añadir la app).','sin-permiso':'El iPhone tiene bloqueados los avisos de Prograd. Actívalos en Ajustes › Notificaciones › Prograd.'}[srv]||'';
+   const txt={comprobando:'Comprobando con el servidor…',ok:'Conectado.',renovada:'Se había perdido la conexión con el servidor y la he renovado.',error:'No he podido comprobar el servidor ahora mismo. Si tienes internet, prueba más tarde.','sin-sub':'Este móvil ya no tiene los avisos activos (pasa si quitas y vuelves a añadir la app).','sin-permiso':IS_AND?'El móvil tiene bloqueados los avisos de Prograd. Actívalos en Ajustes › Aplicaciones › Prograd › Notificaciones.':'El iPhone tiene bloqueados los avisos de Prograd. Actívalos en Ajustes › Notificaciones › Prograd.'}[srv]||'';
    return html`<div className="field pop-in" style=${{padding:'10px 12px',display:'flex',alignItems:'center',gap:10}}>
     <span aria-hidden="true" style=${{width:9,height:9,borderRadius:5,flexShrink:0,background:bad?'#f08a8a':srv==='error'?'#f0b92b':srv==='comprobando'?'#8b9096':'#C6F432'}}></span>
     <div className="text-sm" style=${{flex:1,minWidth:0,color:'#d9dad5'}}>${txt}${!bad&&srv!=='error'&&nx?html` Próximo aviso: <b>${nx}</b>.`:''}</div>
     ${srv==='sin-sub'&&html`<button disabled=${busy} onClick=${activar} style=${{...AB,height:32,flexShrink:0}}>Reactivar</button>`}
    </div>`})()}
-  ${!listo&&html`<div className="field text-sm text-neutral-300" style=${{padding:'10px 12px'}}>${inClaude?'Aquí solo ves la vista previa. Los avisos funcionan en la app instalada desde GitHub en la pantalla de inicio.':!PUSH_SERVER?'Falta conectar el servidor de avisos.':!soporta?'Este navegador no admite notificaciones. En iPhone hace falta iOS 16.4 o posterior.':'Para recibir avisos, abre Prograd desde el icono de la pantalla de inicio (Safari › Compartir › Añadir a pantalla de inicio).'}</div>`}
+  ${!listo&&html`<div className="field text-sm text-neutral-300" style=${{padding:'10px 12px'}}>${inClaude?'Aquí solo ves la vista previa. Los avisos funcionan en la app instalada desde GitHub en la pantalla de inicio.':!PUSH_SERVER?'Falta conectar el servidor de avisos.':!soporta?(IS_AND?'Este navegador no admite notificaciones. Abre Prograd con Chrome.':'Este navegador no admite notificaciones. En iPhone hace falta iOS 16.4 o posterior.'):'Para recibir avisos, abre Prograd desde el icono de la pantalla de inicio ('+INSTALL_TXT+').'}</div>`}
   <div style=${row}><label htmlFor="hora-entreno">¿A qué hora sueles entrenar?</label><input id="hora-entreno" type="time" value=${p.hora} onChange=${e=>e.target.value&&upd({hora:e.target.value})} className="field num" style=${{height:38,padding:'0 10px',width:110,textAlign:'center'}}/></div>
   <div><div style=${{marginBottom:8}}>Avisarme</div><div style=${{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>${ANTES.map(([v,l])=>html`<button key=${v} onClick=${()=>upd({antes:v})} style=${chip(p.antes===v)}>${l.replace(' antes','')}</button>`)}</div>
    <div className="text-xs mut" style=${{marginTop:6}}>El aviso llegará a las <b className="num" style=${{color:'#e5e5e5'}}>${avisoHora}</b>${p.antes?' ('+ANTES.find(x=>x[0]===p.antes)[1]+')':''}.</div></div>
@@ -1266,8 +1268,9 @@ function CountUp({to,ms=800}){
 const AT0={on:false,name:'Descanso Prograd',big:150,small:90,none:120};
 const atLoad=()=>{try{return{...AT0,...JSON.parse(localStorage.getItem('gym-atajo')||'{}')}}catch(e){return{...AT0}}};
 const atSecs=(c,t)=>t?(t.big?c.big:c.small):c.none;
-const atOpen=(c,secs)=>{try{window.location.href='shortcuts://run-shortcut?name='+encodeURIComponent(c.name)+'&input=text&text='+secs}catch(e){}};
-const atajoSerie=t=>{const c=atLoad();if(c.on&&c.name)atOpen(c,atSecs(c,t))};
+/* En Android no hay Atajos: se pide al reloj un temporizador directamente (puede que algún móvil no lo deje) */
+const atOpen=(c,secs)=>{try{window.location.href=IS_AND?'intent:#Intent;action=android.intent.action.SET_TIMER;i.android.intent.extra.alarm.LENGTH='+secs+';B.android.intent.extra.alarm.SKIP_UI=true;S.android.intent.extra.alarm.MESSAGE=Descanso;end':'shortcuts://run-shortcut?name='+encodeURIComponent(c.name)+'&input=text&text='+secs}catch(e){}};
+const atajoSerie=t=>{const c=atLoad();if(c.on&&(c.name||IS_AND))atOpen(c,atSecs(c,t))};
 const fmtT=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 function AtajoCard(){
  const [c,setC]=useState(atLoad),[help,setHelp]=useState(false);
@@ -1279,16 +1282,17 @@ function AtajoCard(){
  const tog=html`<button role="switch" aria-checked=${c.on} aria-label="Abrir el atajo al marcar una serie" onClick=${()=>upd({on:!c.on})} style=${{width:52,height:30,borderRadius:15,background:c.on?'#C6F432':'rgba(255,255,255,.16)',position:'relative',flexShrink:0}}><span style=${{position:'absolute',top:3,left:c.on?25:3,width:24,height:24,borderRadius:12,background:c.on?'#0B0D10':'#e5e5e5',transition:'left .3s var(--spring)'}}></span></button>`;
  const pasos=['Abre la app Atajos y crea uno nuevo con el botón +.','Ponle de nombre exactamente «'+(c.name||'Descanso Prograd')+'».','Añade la acción «Iniciar temporizador».','Toca la duración y elige la variable «Entrada del atajo». Cambia «minutos» por «segundos».','Guárdalo y vuelve aquí. Pulsa «Probar» para comprobarlo.'];
  return html`<div className="card p-4" style=${{display:'grid',gap:14}}>
-  <div className="flex justify-between items-baseline text-sm"><span className="ch">Temporizador del iPhone</span><span className="mut">${c.on?'Activado':'Desactivado'}</span></div>
-  <div style=${row}><div><div style=${{fontWeight:600}}>Abrir el atajo al marcar una serie</div><div className="text-xs mut" style=${{marginTop:2}}>Pone un temporizador del Reloj que suena aunque el móvil esté bloqueado. Se abrirá Atajos un momento.</div></div>${tog}</div>
-  ${inClaude&&html`<div className="field text-sm text-neutral-300" style=${{padding:'10px 12px'}}>Solo funciona en la app instalada desde GitHub en la pantalla de inicio del iPhone.</div>`}
-  <div style=${row}><label htmlFor="atajo-nombre">Nombre del atajo</label><input id="atajo-nombre" value=${c.name} onChange=${e=>upd({name:e.target.value})} className="field" style=${{height:38,padding:'0 10px',width:170}}/></div>
+  <div className="flex justify-between items-baseline text-sm"><span className="ch">${IS_AND?'Temporizador del reloj':'Temporizador del iPhone'}</span><span className="mut">${c.on?'Activado':'Desactivado'}</span></div>
+  <div style=${row}><div><div style=${{fontWeight:600}}>${IS_AND?'Poner un temporizador al marcar una serie':'Abrir el atajo al marcar una serie'}</div><div className="text-xs mut" style=${{marginTop:2}}>${IS_AND?'Pone un temporizador en el reloj de Android que suena aunque el móvil esté bloqueado. Puede que algún móvil no lo permita: pulsa «Probar» para comprobarlo.':'Pone un temporizador del Reloj que suena aunque el móvil esté bloqueado. Se abrirá Atajos un momento.'}</div></div>${tog}</div>
+  ${inClaude&&html`<div className="field text-sm text-neutral-300" style=${{padding:'10px 12px'}}>${IS_AND?'Solo funciona en la app abierta desde GitHub en el móvil.':'Solo funciona en la app instalada desde GitHub en la pantalla de inicio del iPhone.'}</div>`}
+  ${!IS_AND&&html`<div style=${row}><label htmlFor="atajo-nombre">Nombre del atajo</label><input id="atajo-nombre" value=${c.name} onChange=${e=>upd({name:e.target.value})} className="field" style=${{height:38,padding:'0 10px',width:170}}/></div>`}
   ${Step('big','Ejercicios básicos')}${Step('small','Aislamiento')}${Step('none','Sin objetivo')}
   <div style=${{display:'flex',gap:6}}>
-   <button onClick=${()=>setHelp(h=>!h)} aria-expanded=${help} style=${{...AB,flex:1,justifyContent:'center'}}>${help?'Ocultar instrucciones':'Cómo crear el atajo'}</button>
-   <button onClick=${()=>atOpen(c,c.big)} style=${{...AB,justifyContent:'center'}}>Probar</button>
+   ${!IS_AND&&html`<button onClick=${()=>setHelp(h=>!h)} aria-expanded=${help} style=${{...AB,flex:1,justifyContent:'center'}}>${help?'Ocultar instrucciones':'Cómo crear el atajo'}</button>`}
+   <button onClick=${()=>atOpen(c,c.big)} style=${{...AB,justifyContent:'center',flex:IS_AND?1:'none'}}>Probar</button>
   </div>
-  ${help&&html`<ol className="text-sm pop-in" style=${{margin:0,paddingLeft:20,display:'grid',gap:6,color:'#d4d4d4',listStyle:'decimal'}}>${pasos.map((p,i)=>html`<li key=${i}>${p}</li>`)}</ol>`}
+  ${IS_AND&&html`<p className="text-xs mut" style=${{margin:0}}>Si al probar no aparece el temporizador en el reloj, tu móvil no lo permite: desactívalo.</p>`}
+  ${!IS_AND&&help&&html`<ol className="text-sm pop-in" style=${{margin:0,paddingLeft:20,display:'grid',gap:6,color:'#d4d4d4',listStyle:'decimal'}}>${pasos.map((p,i)=>html`<li key=${i}>${p}</li>`)}</ol>`}
  </div>`;
 }
 function TabBar({tab,setTab}){
@@ -1727,6 +1731,37 @@ function ExitAsk({note,onSave,onLeave,onStay}){
   <button onClick=${onLeave} className="h-11 w-full mut">Salir sin guardar</button>
  </div>`}<//>`;
 }
+/* Introducción corta: sale sola la primera vez solo a quien instala la app de cero; desde Ajustes se puede volver a ver */
+function Intro({close}){
+ const [i,setI]=useState(0),[cl,setCl]=useState(false),tx=useRef(null);
+ const inst=!!((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone);
+ const shut=()=>{setCl(true);setTimeout(close,260)};
+ const ico=d=>html`<div style=${{width:76,height:76,borderRadius:38,background:'rgba(198,244,50,.12)',color:'#C6F432',display:'grid',placeItems:'center'}}>${I(d,38)}</div>`;
+ const S=[
+  {art:html`<${Logo} h=${34}/>`,t:'Bienvenido a Prograd',p:['Apunta tus series y la app te dice cuándo subir el peso.',inst?'Ya la tienes en la pantalla de inicio. ¡Perfecto!':'Instálala para usarla como una app: '+INSTALL_TXT+'. Ábrela siempre desde ese icono.']},
+  {art:ico(P.plus),t:'Rutinas y días',p:['Pulsa «Nueva», ponle nombre al día (por ejemplo «Pecho y tríceps») y elige su rutina (por ejemplo «Rutina A»).','Añade ejercicios y toca cada serie al hacerla. Arriba, en «Hoy toca», verás qué día te toca.']},
+  {art:ico(P.arrU),t:'Progresión automática',p:['Cada ejercicio tiene un objetivo, por ejemplo 3 series de 8 a 12 repeticiones.','Cuando hagas 12 en todas, sube el peso. Si te quedas por debajo de 8 dos veces seguidas, baja un 10 %. Al terminar, el peso de la próxima vez ya queda apuntado.']},
+  {art:html`<div style=${{display:'flex',alignItems:'center',gap:14}}><${RankBadge} r=${{tier:3,div:2}} size=${64}/><${Flame} on=${true} size=${58}/></div>`,t:'Rangos y racha',p:['Según lo que levantas comparado con tu peso, cada músculo tiene un rango, de Hierro a Radiante. Lo verás en Progresión.','La llama cuenta las semanas seguidas que cumples tus entrenos.']},
+  {art:ico(TABS[3][2]),t:'Medidas y ajustes',p:['Cada 2 semanas apunta tu peso y tu cintura en Medidas: la app te dice si comer un poco más o menos.','Tus datos solo están en este móvil: en Ajustes exporta una copia de vez en cuando. Allí también puedes activar avisos y el temporizador del descanso.']}];
+ const last=i===S.length-1,go=d=>setI(k=>Math.max(0,Math.min(S.length-1,k+d)));
+ const s=S[i];
+ return ReactDOM.createPortal(html`<div role="dialog" aria-modal="true" aria-label="Introducción a Prograd" className=${'fixed inset-0 '+(cl?'fade-out':'fade')} style=${{zIndex:40,background:'#000',display:'flex',flexDirection:'column',padding:'calc(env(safe-area-inset-top,0px) + 14px) 20px calc(env(safe-area-inset-bottom,0px) + 20px)'}}
+   onTouchStart=${e=>{tx.current=e.touches[0].clientX}} onTouchEnd=${e=>{if(tx.current==null)return;const dx=e.changedTouches[0].clientX-tx.current;tx.current=null;if(Math.abs(dx)>50)go(dx<0?1:-1)}}>
+  <div style=${{display:'flex',justifyContent:'flex-end',height:36}}>${!last&&html`<button onClick=${shut} className="mut" style=${{padding:'0 6px',fontSize:15}}>Saltar</button>`}</div>
+  <div key=${i} className="pop-in" style=${{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',gap:22,maxWidth:420,width:'100%',margin:'0 auto'}}>
+   <div style=${{display:'flex',justifyContent:'center',minHeight:80,alignItems:'center'}}>${s.art}</div>
+   <h2 className="num" style=${{fontSize:30,fontWeight:700,textAlign:'center',lineHeight:1.1}}>${s.t}</h2>
+   <div style=${{display:'grid',gap:12}}>${s.p.map((x,k)=>html`<p key=${k} className="text-neutral-300" style=${{fontSize:16,lineHeight:1.45,textAlign:'center'}}>${x}</p>`)}</div>
+  </div>
+  <div style=${{maxWidth:420,width:'100%',margin:'0 auto',display:'grid',gap:16}}>
+   <div style=${{display:'flex',justifyContent:'center',gap:7}} aria-label=${'Paso '+(i+1)+' de '+S.length}>${S.map((_,k)=>html`<span key=${k} style=${{width:k===i?20:7,height:7,borderRadius:4,background:k===i?'#C6F432':'#333',transition:'all .3s'}}></span>`)}</div>
+   <div style=${{display:'flex',gap:10}}>
+    ${i>0&&html`<button onClick=${()=>go(-1)} className="h-14" style=${{...AB,height:56,flex:'0 0 auto',padding:'0 22px',justifyContent:'center',fontSize:16}}>Atrás</button>`}
+    <button onClick=${()=>last?shut():go(1)} className="btn-w h-14" style=${{flex:1,fontSize:16}}>${last?'Empezar':'Siguiente'}</button>
+   </div>
+  </div>
+ </div>`,document.body);
+}
 function App(){
  const [notes,setNotes]=useState(load);
  const [aid,setAid]=useState(null);
@@ -1743,6 +1778,8 @@ function App(){
  useEffect(()=>{const id=setTimeout(()=>{pushHeal(notes,cfg)},4000);return()=>clearTimeout(id)},[]);
  useEffect(()=>{setTag(PLANS[cfg.plan]?PLANS[cfg.plan].name:null)},[cfg.plan]);
  const [ph,setPh]=useState(null);
+ const [intro,setIntro]=useState(()=>!BOOT_OLD&&!cfg.intro);
+ const endIntro=()=>{setIntro(false);if(!cfg.intro)cloud.setCfg({intro:Date.now()})};
  const [imp,setImp]=useState(null),[bmsg,setBmsg]=useState(null),fileRef=useRef(null);
  const open=id=>{setAid(id);window.scrollTo(0,0)};
  const note=notes.find(n=>n.id===aid);
@@ -1850,11 +1887,13 @@ function App(){
    <input ref=${fileRef} type="file" accept="application/json,.json" className="hidden" onChange=${pickFile}/>
    <${NotifCard} notes=${notes} cfg=${cfg}/>
    <${AtajoCard}/>
+   <button onClick=${()=>setIntro(true)} className="card p-4 w-full flex items-center justify-between text-left"><span><span style=${{display:'block',fontWeight:600}}>Ver la introducción</span><span className="text-xs mut">Cómo funciona Prograd, en 5 pasos</span></span><span className="mut">${I(P.chev,18)}</span></button>
    <p className="text-xs mut px-1">${cloud.label}</p>
    </div>`}
   </div>`}
   ${!note&&html`<${TabBar} tab=${tab} setTab=${setTab}/>`}
   ${ask&&note&&html`<${ExitAsk} note=${note} onSave=${()=>{patch(n=>finishNote(n,dl));leaveNow()}} onLeave=${leaveNow} onStay=${()=>setAsk(false)}/>`}
+  ${intro&&html`<${Intro} close=${endIntro}/>`}
   ${ph==='new'&&html`<${MeasureNew} ms=${cloud.meas} cloud=${cloud} close=${()=>setPh(null)}/>`}
   ${ph==='hist'&&html`<${MeasureHist} ms=${cloud.meas} cloud=${cloud} close=${()=>setPh(null)}/>`}
   ${imp&&html`<${Sheet} title="Importar copia" close=${()=>setImp(null)}>${shut=>html`<div className="space-y-3">
