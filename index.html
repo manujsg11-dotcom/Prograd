@@ -996,55 +996,56 @@ function RanksCard({notes,cfg,meas}){
 /* Muñeco del mapa de rangos: musculoso, brazos separados y manos abiertas. Se dibuja la mitad izquierda (centro x=120) y se refleja */
 const mirX=d=>d.replace(/(-?\d*\.?\d+) (-?\d*\.?\d+)/g,(_,x,y)=>(240-x)+' '+y);
 const BODYB={
- neck:'M106 52 C106 62 105 68 102 76 L138 76 C135 68 134 62 134 52 Z',
- head:'M120 7 C133 7 141 17 141 31 C141 43 137 51 130 56 C127 58 124 59 120 59 C116 59 113 58 110 56 C103 51 99 43 99 31 C99 17 107 7 120 7 Z',
+ neck:'M107 48 C107 60 105 68 100 78 L140 78 C135 68 133 60 133 48 Z',
+ head:'M120 6 C133 6 142 15 142 29 C142 38 140 45 136 51 C132 57 126 61 120 61 C114 61 108 57 104 51 C100 45 98 38 98 29 C98 15 107 6 120 6 Z',
  half:[
   ['M120 72 L104 72 C96 78 80 82 64 86 C58 90 58 100 64 110 C70 118 74 124 76 130 C80 150 86 168 88 186 C90 198 96 214 104 224 C110 230 116 234 120 236 Z'],
-  ['M88 186 C78 200 67 220 66 248 C64 276 68 296 74 318 L106 318 C108 296 112 262 118 238 C110 230 100 216 88 186 Z'],
-  ['M66 84 C56 86 49 94 48 106 C46 126 44 146 41 166 L64 172 C68 156 74 140 78 128 C80 108 80 90 66 84 Z'],
+  ['M88 186 C80 200 72 218 71 244 C70 272 72 296 76 318 L106 318 C108 296 112 262 118 238 C110 230 100 216 88 186 Z'],
+  ['M68 84 C56 86 48 96 47 110 C45 130 43 150 41 166 L62 172 C68 158 76 144 80 130 C82 112 82 92 68 84 Z'],
   ['M41 164 C34 178 29 192 27 206 L46 210 C52 196 58 184 65 170 Z'],
   ['M27 205 C20 210 13 216 10 224 C8 229 11 231 14 227 L17 222 C14 232 12 240 13 244 C14 248 18 247 19 243 L21 234 C20 242 20 249 23 250 C26 251 27 247 27 243 L28 234 C29 242 30 248 33 248 C36 248 36 244 35 238 L35 230 C37 236 40 241 43 241 C46 241 46 237 44 232 C42 224 46 214 46 210 Z'],
-  ['M74 316 C74 324 75 330 76 336 L106 336 C106 330 106 324 106 316 Z','#e9eaec'],
-  ['M74 334 C66 352 66 380 76 404 L100 404 C104 380 108 354 106 336 Z','#e9eaec'],
+  ['M76 316 C76 324 77 330 77 336 L105 336 C105 330 105 324 105 316 Z','#e9eaec'],
+  ['M76 334 C70 352 70 380 78 404 L99 404 C103 380 106 354 105 336 Z','#e9eaec'],
   ['M78 402 C75 414 69 424 68 432 C67 440 74 442 82 442 L98 442 C101 432 101 418 99 402 Z']]};
-const FORE=[['forearms','M42 168 L51 170 C46 182 40 194 36 206 L29 205 C32 192 36 180 42 168 Z'],['forearms','M54 171 L63 174 C57 186 51 198 45 209 L39 207 C44 196 49 184 54 171 Z']];
-const DELT=['shoulders','M64 87 C54 89 48 97 47 108 C46 118 48 126 52 130 C58 122 66 112 72 104 C76 96 74 88 64 87 Z'];
-const ARM='M52 132 C58 124 66 114 74 106 C78 126 72 146 64 166 C58 168 50 166 45 162 C46 152 48 140 52 132 Z';
+const FORE=[['forearms','M40 170 L52 172 C47 184 42 196 37 206 L29 205 C31 192 35 181 40 170 Z'],['forearms','M54 172 L64 175 C58 187 52 198 46 209 L39 207 C44 196 49 184 54 172 Z']];
+const DELT=['shoulders','M70 86 C58 86 48 96 47 110 C46 120 49 128 54 132 C62 128 70 120 76 110 C80 102 80 90 70 86 Z'];
+const ARM='M60 130 C67 124 77 122 79 130 C81 142 73 156 63 164 C55 168 47 164 46 156 C46 146 51 136 60 130 Z';
 const BODY={
- front:[['traps','M104 74 C96 79 84 83 72 86 C86 89 98 89 108 84 Z'],DELT,
-  ['chest','M76 90 C90 86 106 86 118 88 L118 124 C106 130 90 128 80 122 C74 116 72 104 72 98 C72 94 73 91 76 90 Z'],
+ front:[['traps','M104 74 C96 79 84 83 74 86 C86 89 98 89 108 84 Z'],DELT,
+  ['chest','M118 86 C106 84 90 85 80 88 C75 92 74 100 75 108 C77 117 83 123 93 125 C103 127 111 126 118 123 Z'],
   ['biceps',ARM],...FORE,
   ['core','M101 128 C106 127 113 127 118 127 L118 143 L100 143 C99 137 99 132 101 128 Z'],
   ['core','M100 146 L118 146 L118 161 L100 161 C99 156 99 151 100 146 Z'],
   ['core','M100 164 L118 164 L118 179 L101 179 C100 174 99 169 100 164 Z'],
   ['core','M101 182 L118 182 L118 230 C110 222 104 206 101 182 Z'],
-  ['core','M80 126 C88 130 94 132 97 134 C96 156 96 176 98 194 C100 206 106 218 114 228 C104 222 94 210 90 198 C88 184 86 168 84 152 C83 142 82 134 80 126 Z'],
-  ['quads','M89 196 C77 206 68 224 67 250 C67 278 70 300 76 314 L86 314 C90 290 91 258 89 232 C89 220 89 208 89 196 Z'],
-  ['quads','M91 202 C96 210 103 218 110 226 C106 250 102 280 98 316 L86 314 C90 290 91 258 91 232 C91 222 91 212 91 202 Z'],
-  ['quads','M112 228 C114 232 116 236 118 240 C116 256 112 270 108 280 C107 266 108 248 112 228 Z'],
-  ['quads','M106 262 C110 278 110 298 104 318 L98 318 C100 300 103 280 106 262 Z'],
-  ['calves','M72 342 C68 356 68 374 74 392 C78 376 79 356 78 340 Z'],
-  ['calves','M98 340 C102 356 101 374 96 392 C92 376 91 356 92 340 Z']],
+  ['core','M80 128 C88 130 94 132 97 134 C96 156 96 176 98 194 C100 206 106 218 114 228 C104 222 94 210 90 198 C88 184 86 168 84 152 C83 142 82 134 80 128 Z'],
+  ['quads','M89 196 C80 206 74 222 73 248 C72 276 74 300 79 314 L87 314 C90 290 91 258 89 232 C89 220 89 208 89 196 Z'],
+  ['quads','M91 202 C98 212 108 222 116 238 C112 262 104 290 98 316 L87 314 C90 290 91 258 91 232 C91 222 91 212 91 202 Z'],
+  ['quads','M107 262 C110 278 109 298 104 318 L98 318 C100 300 103 280 107 262 Z'],
+  ['calves','M75 342 C71 356 71 374 77 392 C80 376 81 356 80 340 Z'],
+  ['calves','M97 340 C101 356 100 374 95 392 C91 376 90 356 91 340 Z']],
  back:[['traps','M120 58 C116 64 112 70 106 74 C96 80 82 84 70 88 C84 94 96 100 104 110 C112 120 116 134 120 148 Z'],DELT,
   ['back','M78 104 C92 102 106 112 118 150 L118 196 C108 200 98 206 94 212 C90 190 86 166 82 144 C78 128 76 114 78 104 Z'],
   ['triceps',ARM],...FORE,
   ['lumbar','M102 198 L118 196 L118 228 C112 226 106 222 100 216 C100 210 100 204 102 198 Z'],
-  ['glutes','M80 210 C92 204 108 206 118 214 L118 250 C106 256 90 254 80 246 C74 236 74 220 80 210 Z'],
-  ['hams','M76 254 C84 258 92 259 96 259 C95 278 94 298 93 314 C88 314 84 313 80 312 C73 294 72 272 76 254 Z'],
-  ['hams','M99 259 C106 259 112 257 116 254 C114 276 110 298 106 314 C102 316 98 316 96 315 C97 298 98 278 99 259 Z'],
-  ['calves','M76 340 C68 352 68 368 78 384 C84 374 86 360 87 344 C84 341 80 340 76 340 Z'],
-  ['calves','M90 344 C91 360 92 374 98 384 C106 368 106 352 102 340 C98 340 94 341 90 344 Z']]};
+  ['glutes','M82 212 C92 206 108 208 118 214 L118 246 C106 252 92 250 84 244 C78 236 78 222 82 212 Z'],
+  ['hams','M79 254 C86 257 92 258 96 258 C95 278 94 298 93 314 C88 314 84 313 81 312 C76 294 76 272 79 254 Z'],
+  ['hams','M99 258 C106 258 112 256 116 252 C114 276 110 298 106 314 C102 316 98 316 96 315 C97 298 98 278 99 258 Z'],
+  ['calves','M78 340 C71 352 71 368 80 384 C85 374 87 360 88 344 C85 341 81 340 78 340 Z'],
+  ['calves','M90 344 C91 360 92 374 97 384 C104 368 104 352 100 340 C97 340 93 341 90 344 Z']]};
 function RankMap({notes,cfg,meas}){
  const [sel,setSel]=useState(null);
  const bw=bodyW(meas)||75,mf=muscleF(bestsOf(notes,cfg),bw,notes);
  const rk=id=>mf[id]!=null?stepOf(mf[id]):null;
  const fillOf=id=>{const r=rk(id);return r?'url(#rkg'+r.tier+')':'#1d1f23'};
  const n=Object.keys(mf).length;
+ /* El cuerpo se pinta dos veces: primero un trazo blanco grueso y encima el relleno, para que solo quede el contorno exterior */
+ const parts=[[BODYB.neck],...BODYB.half.flatMap(([d,c])=>[[d,c],[mirX(d),c]])];
  const Fig=(side,dx)=>{const mus=BODY[side].flatMap(([g,d])=>[[g,d],[g,mirX(d)]]);return html`<g transform=${'translate('+dx+',0)'} strokeLinejoin="round">
-  <path d=${BODYB.neck} fill="#0b0b0b" stroke="#fff" strokeWidth="3"/>
-  ${BODYB.half.flatMap(([d,c],i)=>[d,mirX(d)].map((p,j)=>html`<path key=${'b'+i+j} d=${p} fill=${c||'#0b0b0b'} stroke="#fff" strokeWidth="3"/>`))}
-  <path d=${BODYB.head} fill="#0b0b0b" stroke="#fff" strokeWidth="3"/>
-  ${mus.map(([g,d],i)=>html`<path key=${side+i} d=${d} fill=${fillOf(g)} stroke="#fff" strokeWidth="2.2" style=${{cursor:'pointer',transition:'fill .4s, opacity .25s',opacity:sel&&sel!==g?.45:1,animation:'fade .6s both',animationDelay:(i*12)+'ms'}} onClick=${()=>setSel(sel===g?null:g)}/>`)}
+  ${parts.map(([d],i)=>html`<path key=${'o'+i} d=${d} fill="#fff" stroke="#fff" strokeWidth="7"/>`)}
+  ${parts.map(([d,c],i)=>html`<path key=${'f'+i} d=${d} fill=${c||'#0b0b0b'}/>`)}
+  <path d=${BODYB.head} fill="#0b0b0b" stroke="#fff" strokeWidth="3.5"/>
+  ${mus.map(([g,d],i)=>html`<path key=${side+i} d=${d} fill=${fillOf(g)} stroke="#fff" strokeWidth="3" style=${{cursor:'pointer',transition:'fill .4s, opacity .25s',opacity:sel&&sel!==g?.45:1,animation:'fade .6s both',animationDelay:(i*12)+'ms'}} onClick=${()=>setSel(sel===g?null:g)}/>`)}
  </g>`};
  return html`<div className="card p-4">
   <div className="flex justify-between items-baseline text-sm mb-2"><span className="ch">Mapa de rangos</span><span className="mut">${n} de ${Object.keys(MUS).length-1} músculos</span></div>
