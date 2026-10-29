@@ -1112,6 +1112,7 @@ function RankMap({notes,cfg,meas}){
   </svg>
   <p className="text-sm text-neutral-200" style=${{margin:'6px 0 0',minHeight:20}}>${sel?html`<b>${MUS[sel]}</b> · ${rk(sel)?html`<span style=${{color:RANKS[rk(sel).tier][1],fontWeight:600}}>${rankName(rk(sel))}</span>`:'sin clasificar'}`:'Toca un músculo para ver su rango.'}</p>
   <div style=${{display:'flex',flexWrap:'wrap',gap:'4px 10px',marginTop:8}}>${RANKS.map(([nm,c])=>html`<span key=${nm} className="text-xs mut" style=${{display:'flex',alignItems:'center',gap:4}}><i style=${{width:9,height:9,borderRadius:5,background:c,display:'inline-block'}}></i>${nm}</span>`)}</div>
+  <div className="text-xs" style=${{padding:'10px 12px',marginTop:12,lineHeight:1.45,borderRadius:14,background:'rgba(198,244,50,.1)',border:'1px solid rgba(198,244,50,.45)',color:'#e6f5b8'}}><b style=${{color:'#C6F432'}}>Para que tu rango sea fiable:</b> en cada ejercicio, abre «Músculos» y comprueba el material (barra, mancuernas, máquina…) y si es a un brazo o una pierna. Con mancuernas, apunta el peso de una sola.</div>
  </div>`;
 }
 /* ===== Historial por ejercicio ===== */
