@@ -9,7 +9,8 @@ App de gimnasio de Manuel para iPhone: rutinas, registro de series (kg × reps),
 ## Archivos
 - Se trabaja en `C:\Users\Desktop-PC\Desktop\Prograd`, que es una copia del repositorio conectada a GitHub. El `index.html` suelto del Escritorio es una versión **antigua**: no usarla. Antes de cambiar nada, hacer `git pull` por si Manuel ha subido algo a mano desde la web.
 - `index.html`: la app entera en un solo archivo (unos 500 KB). React 18 (UMD) + `htm` (plantillas `html\`...\``, sin JSX ni compilación) + Tailwind **ya compilado e incrustado**. Fuentes Barlow y Barlow Condensed incrustadas en base64 (OFL).
-- `sw.js`: service worker. `index.html` va con red primero (si hay internet, siempre la última versión); iconos y manifiesto con caché. Cambiar `VERSION` solo si cambian iconos o manifiesto. También recibe los avisos push y pide el texto a `/mensaje` del servidor.
+- `sw.js`: service worker. `index.html` va con red primero (si hay internet, siempre la última versión), pero si la red tarda más de 3 s (poca cobertura) abre la copia guardada y guarda la nueva para la próxima vez; iconos y manifiesto con caché.
+- Pantalla de carga (`#splash`, justo después de `<body>`): logo sobre negro mientras carga de verdad; `App` la funde al montarse (sin espera añadida) y se quita sola a los 12 s si algo falla. Cambiar `VERSION` solo si cambian iconos o manifiesto. También recibe los avisos push y pide el texto a `/mensaje` del servidor.
 - `manifest.webmanifest`, `icono-prograd-v3.png`, `icons/` (180/192/512).
 - `worker/prograd-avisos.js`: **copia de referencia** del servidor de avisos (Cloudflare Worker). Lo que funciona de verdad es lo que Manuel tiene pegado en Cloudflare; si lo cambias, dile que lo pegue en el panel de Cloudflare.
 

@@ -1,7 +1,8 @@
 // Prograd service worker.
 // Los archivos de vendor/ e icons/ se guardan una vez (cache-first).
 // index.html se pide siempre a la red primero: si hay internet recibes la última versión sola;
-// si no, se abre la copia guardada. Cambia VERSION solo si cambias archivos de vendor/ o icons/.
+// si no, se abre la copia guardada. Con poca cobertura no se espera más de 3 s: se abre la copia
+// guardada y la versión nueva se guarda para la próxima vez. Cambia VERSION solo si cambias archivos de vendor/ o icons/.
 const VERSION = 'prograd-v14';
 const PUSH_SERVER = 'https://prograd-avisos.manujsg11.workers.dev';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icono-prograd-v3.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
@@ -12,7 +13,13 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   const isPage = req.mode === 'navigate' || req.url.endsWith('/index.html');
   if (isPage) {
-    e.respondWith(fetch(req, { cache: 'no-cache' }).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put('index.html', copy)); return r; }).catch(() => caches.match('index.html')));
+    const net = fetch(req, { cache: 'no-cache' }).then(async r => { if (r.ok) { const c = await caches.open(VERSION); await c.put('index.html', r.clone()); } return r; });
+    e.waitUntil(net.then(() => {}, () => {}));
+    e.respondWith(caches.match('index.html').then(cached => {
+      if (!cached) return net;
+      const slow = new Promise(res => setTimeout(() => res(cached), 3000));
+      return Promise.race([net, slow]).catch(() => cached);
+    }));
   } else {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return r; })));
   }
