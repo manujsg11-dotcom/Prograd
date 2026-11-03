@@ -11,6 +11,9 @@ self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Pr
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  // Otras páginas (como prueba-nube.html) van directas a la red y no pisan la copia guardada de la app
+  const path = new URL(req.url).pathname;
+  if (req.mode === 'navigate' && !(path.endsWith('/') || path.endsWith('/index.html'))) return;
   const isPage = req.mode === 'navigate' || req.url.endsWith('/index.html');
   if (isPage) {
     const net = fetch(req, { cache: 'no-cache' }).then(async r => { if (r.ok) { const c = await caches.open(VERSION); await c.put('index.html', r.clone()); } return r; });
