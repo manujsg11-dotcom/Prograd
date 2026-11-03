@@ -1425,7 +1425,7 @@ async function exportData(data){
 function BackupCard({cfg,mode,onExport,onPick,msg}){
  return html`<div className="card p-4">
   <div className="flex justify-between items-baseline text-sm mb-2"><span className="ch">Copia de seguridad</span><span className="mut">${cfg.lastExport?'Última: '+ago(cfg.lastExport):'Sin copias'}</span></div>
-  <p className="text-sm text-neutral-300 leading-snug">${mode==='local'?'Tus datos están solo en este móvil. Exporta una copia de vez en cuando: si borras los datos de Safari o cambias de móvil, la necesitarás.':'Tus datos se guardan en tu cuenta de Claude. Exporta una copia de vez en cuando: sirve para pasarlos a la app independiente o por si pasa algo.'}</p>
+  <p className="text-sm text-neutral-300 leading-snug">${mode==='local'?'Tus datos están solo en este móvil. Exporta una copia de vez en cuando: si borras los datos de Safari o cambias de móvil, la necesitarás.':'Tus datos se guardan en este móvil y en la nube. Exporta también una copia de vez en cuando, por si acaso.'}</p>
   <div className="flex gap-2 mt-3"><button onClick=${onExport} className="btn-w h-11 flex-1 text-sm">Exportar copia</button><button onClick=${onPick} className="chip h-11 flex-1 rounded-full text-sm text-neutral-200">Importar copia</button></div>
   ${msg&&html`<p className="text-sm text-neutral-200 mt-2.5 pop-in">${msg}</p>`}
  </div>`;
@@ -1702,38 +1702,104 @@ function MeasureHist({ms,cloud,close}){
  </div><//>`;
 }
 
-/* Guardado: en la nube de tu cuenta de Claude si la app se abre en Claude; si no, solo en este móvil. Siempre con copia local. */
+/* ===== Copia en la nube: Firebase, cuenta opcional con email y contraseña =====
+   Sin librerías: se habla directamente con Google. Cada cosa (un día, una medida, los ajustes) se guarda
+   como texto en users/{uid}/d/{id}. Quién puede usarla lo deciden las reglas de Firestore (emails autorizados). */
+const FB_KEY='AIzaSyAS-YtNZti0F6WE42UOjsSvn-1vHw9NpY8',FB_PROJ='prograd-1897d';
+const FB_DB='https://firestore.googleapis.com/v1/projects/'+FB_PROJ+'/databases/(default)/documents/users/';
+const fbErr=c=>{const e=new Error(c);e.code=c;return e};
+const fbLoad=()=>{try{const s=JSON.parse(localStorage.getItem('gym-fb')||'null');if(s&&s.uid&&s.rt)return s}catch(e){}return null};
+const fbSave=s=>{try{s?localStorage.setItem('gym-fb',JSON.stringify(s)):localStorage.removeItem('gym-fb')}catch(e){}};
+async function fbFetch(url,opt,ms){const ac=new AbortController(),id=setTimeout(()=>ac.abort(),ms||15000);try{return await fetch(url,{...opt,signal:ac.signal})}catch(e){throw fbErr('net')}finally{clearTimeout(id)}}
+async function fbAuth(path,body){
+ const r=await fbFetch('https://identitytoolkit.googleapis.com/v1/accounts:'+path+'?key='+FB_KEY,{method:'POST',headers:{'Content-Type':'application/json','X-Firebase-Locale':'es'},body:JSON.stringify(body)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw fbErr(String(j.error&&j.error.message||'error').split(/[ :]/)[0]);return j;
+}
+/* El pase para hablar con la base de datos dura 1 hora; con el de larga duración se pide otro */
+async function fbToken(s,force){
+ if(!force&&s.it&&s.exp>Date.now()+60000)return s.it;
+ const r=await fbFetch('https://securetoken.googleapis.com/v1/token?key='+FB_KEY,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(s.rt)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw fbErr(r.status>=500?'net':'gone');
+ s.it=j.id_token;s.rt=j.refresh_token;s.exp=Date.now()+(+j.expires_in||3600)*1000;
+ const cur=fbLoad();if(cur&&cur.uid===s.uid)fbSave({...cur,it:s.it,rt:s.rt,exp:s.exp});
+ return s.it;
+}
+/* Misma forma que la colección de Claude: doc(id).set/delete y limit().get() */
+function fbColl(s){
+ const base=FB_DB+s.uid+'/d';
+ const req=async(method,path,body)=>{
+  for(let k=0;;k++){
+   const t=await fbToken(s,k>0);
+   const r=await fbFetch(base+path,{method,headers:body?{Authorization:'Bearer '+t,'Content-Type':'application/json'}:{Authorization:'Bearer '+t},body:body?JSON.stringify(body):undefined},20000);
+   if(r.status===401&&!k)continue;
+   const j=await r.json().catch(()=>({}));
+   if(!r.ok)throw fbErr(r.status===403||r.status===401?'denied':r.status>=500||r.status===429?'net':'http'+r.status);
+   return j;
+  }
+ };
+ const doc=id=>({set:o=>req('PATCH','/'+id,{fields:{j:{stringValue:JSON.stringify(o)},t:{integerValue:String(Date.now())}}}),delete:()=>req('DELETE','/'+id)});
+ const get=async()=>{const docs=[];let pt='';do{const j=await req('GET','?pageSize=300'+(pt?'&pageToken='+encodeURIComponent(pt):''));(j.documents||[]).forEach(d=>{let v=null;try{v=JSON.parse(d.fields.j.stringValue)}catch(e){}docs.push({id:d.name.split('/').pop(),data:()=>v})});pt=j.nextPageToken||''}while(pt);return{docs}};
+ return{doc,limit:()=>({get})};
+}
+const FB_MSG={EMAIL_EXISTS:'Ya hay una cuenta con ese email. Pulsa «Entrar».',EMAIL_NOT_FOUND:'Email o contraseña incorrectos.',INVALID_PASSWORD:'Email o contraseña incorrectos.',INVALID_LOGIN_CREDENTIALS:'Email o contraseña incorrectos.',INVALID_EMAIL:'Ese email no está bien escrito.',MISSING_EMAIL:'Escribe tu email.',MISSING_PASSWORD:'Escribe la contraseña.',WEAK_PASSWORD:'La contraseña tiene que tener al menos 6 caracteres.',TOO_MANY_ATTEMPTS_TRY_LATER:'Demasiados intentos. Espera un rato y prueba otra vez.',USER_DISABLED:'Esta cuenta está desactivada.',OPERATION_NOT_ALLOWED:'La nube aún no está activada.',net:'No hay conexión. Prueba otra vez cuando tengas internet.',gone:'Se ha cerrado la sesión. Vuelve a entrar.'};
+const fbMsg=e=>FB_MSG[e&&e.code]||'Algo ha fallado ('+(e&&e.code||'error')+'). Prueba otra vez.';
+
+/* Guardado: siempre en este móvil y, si hay cuenta, también en la nube (Firebase).
+   Dentro de Claude sin cuenta de Prograd, en la nube de Claude. */
 function useCloud(notes,setNotes){
  const hasClaude=!!(window.claude&&window.claude.use);
  const [st,setSt]=useState('local');
  const [meas,setMeasS]=useState(loadMeas);
  const [cfg,setCfgS]=useState(loadCfg);
+ const [acct,setAcct]=useState(fbLoad);
  const ref=useRef(null);
- if(!ref.current){let d=[];try{d=JSON.parse(localStorage.getItem('gym-cloud-del')||'[]')}catch(e){}ref.current={coll:null,ready:false,sent:{},del:Array.isArray(d)?d:[],timer:null}}
+ const rd=k=>{try{const v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}};
+ if(!ref.current)ref.current={coll:null,fb:null,ready:false,sent:{},del:rd('gym-cloud-del'),msent:{},mdel:rd('gym-cloud-mdel'),cfgDirty:false,timer:null,busy:false,again:false,lastPull:0};
  const r=ref.current;
  r.notes=notes;r.meas=meas;if(!r.cfg)r.cfg=cfg;
  const ser=n=>JSON.stringify(n);
- const saveIds=()=>{try{localStorage.setItem('gym-cloud-ids',JSON.stringify(Object.keys(r.sent)))}catch(e){}};
- const saveDel=()=>{try{localStorage.setItem('gym-cloud-del',JSON.stringify(r.del))}catch(e){}};
- const setMeas=v=>{r.meas=v;setMeasS(v);try{localStorage.setItem('gym-meas',JSON.stringify(v))}catch(e){}};
- const keepCfg=c=>{r.cfg=c;setCfgS(c);try{localStorage.setItem('gym-cfg',JSON.stringify(c))}catch(e){}};
- const setCfg=p=>{const c={...r.cfg,...p,at:Date.now()};keepCfg(c);if(r.coll&&r.ready)r.coll.doc('cfg').set(clone(c)).catch(()=>{})};
+ const put=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+ const saveIds=()=>{put('gym-cloud-ids',Object.keys(r.sent));put('gym-cloud-mids',Object.keys(r.msent))};
+ const saveDel=()=>{put('gym-cloud-del',r.del);put('gym-cloud-mdel',r.mdel)};
+ /* Los cambios se agrupan: en la nube de Prograd se suben 5 s después del último toque (o al salir de la app) */
+ const kick=ms=>{if(!r.coll||!r.ready)return;clearTimeout(r.timer);r.timer=setTimeout(flush,ms!=null?ms:(r.fb?5000:700))};
+ const setMeas=v=>{r.meas=v;setMeasS(v);put('gym-meas',v);kick()};
+ const keepCfg=c=>{r.cfg=c;setCfgS(c);put('gym-cfg',c)};
+ const setCfg=p=>{const c={...r.cfg,...p,at:Date.now()};keepCfg(c);r.cfgDirty=true;kick()};
+ const fail=e=>{const c=e&&e.code;if(c==='gone'&&r.fb){signOut('gone');return}setSt(c==='denied'?'denied':'error')};
  const flush=async()=>{
+  clearTimeout(r.timer);
   if(!r.coll||!r.ready)return;
-  const cur=r.notes,ops=[];
-  cur.forEach(n=>{const x=ser(n);if(r.sent[n.id]!==x)ops.push(()=>r.coll.doc('n_'+n.id).set(JSON.parse(x)).then(()=>{r.sent[n.id]=x}))});
-  [...r.del].forEach(id=>ops.push(()=>r.coll.doc('n_'+id).delete().then(()=>{r.del=r.del.filter(x=>x!==id);saveDel()})));
+  if(r.busy){r.again=true;return}
+  const coll=r.coll,ops=[];
+  r.notes.forEach(n=>{const x=ser(n);if(r.sent[n.id]!==x)ops.push(()=>coll.doc('n_'+n.id).set(JSON.parse(x)).then(()=>{r.sent[n.id]=x}))});
+  [...r.del].forEach(id=>ops.push(()=>coll.doc('n_'+id).delete().then(()=>{r.del=r.del.filter(x=>x!==id);saveDel()})));
+  r.meas.forEach(m=>{const x=ser(m);if(r.msent[m.id]!==x)ops.push(()=>coll.doc('me_'+m.id).set(JSON.parse(x)).then(()=>{r.msent[m.id]=x}))});
+  [...r.mdel].forEach(id=>ops.push(()=>coll.doc('me_'+id).delete().then(()=>{r.mdel=r.mdel.filter(x=>x!==id);saveDel()})));
+  if(r.cfgDirty){const c=clone(r.cfg);r.cfgDirty=false;ops.push(()=>coll.doc('cfg').set(c).catch(e=>{r.cfgDirty=true;throw e}))}
   if(!ops.length)return;
-  setSt('syncing');
-  try{for(const f of ops)await f();saveIds();setSt('ok')}catch(e){setSt('error')}
+  r.busy=true;setSt('syncing');
+  try{for(const f of ops){if(r.coll!==coll)break;await f()}if(r.coll===coll){saveIds();setSt('ok')}}catch(e){if(r.coll===coll){saveIds();fail(e)}}
+  r.busy=false;if(r.again){r.again=false;kick(300)}
  };
  const pull=async()=>{
-  const snap=await r.coll.limit(500).get(),docs=snap.docs;
-  const cloud=docs.map(d=>JSON.parse(JSON.stringify(d.data()))).filter(n=>n&&n.id&&Array.isArray(n.blocks));
-  const hasMeta=docs.some(d=>d.id==='meta'),cd=docs.find(d=>d.id==='cfg'),cc=cd?JSON.parse(JSON.stringify(cd.data())):null;
-  setMeas(docs.map(d=>d.data()).filter(x=>x&&x.kind==='measure'&&x.t).map(x=>JSON.parse(JSON.stringify(x))).sort((a,b)=>a.t-b.t));
-  let known=[],seeds={};try{known=JSON.parse(localStorage.getItem('gym-cloud-ids')||'[]');seeds=JSON.parse(localStorage.getItem('gym-seed-ids')||'{}')}catch(e){}
-  seeds={...seeds,...SEEDMAP};
+  const coll=r.coll,first=!!(r.fb&&r.fb.first);r.lastPull=Date.now();
+  const snap=await coll.limit(500).get(),docs=snap.docs;
+  if(r.coll!==coll)return;
+  /* La primera vez con una cuenta en este móvil no se descarta nada: se juntan los datos del móvil y los de la nube */
+  if(first){r.sent={};r.del=[];r.msent={};r.mdel=[]}
+  const cloud=docs.filter(d=>d.id.startsWith('n_')||!r.fb).map(d=>JSON.parse(JSON.stringify(d.data()))).filter(n=>n&&n.id&&Array.isArray(n.blocks));
+  const hasMeta=docs.some(d=>d.id==='meta'),cd=docs.find(d=>d.id==='cfg'),cc=cd&&cd.data()?JSON.parse(JSON.stringify(cd.data())):null;
+  let known=[],seeds={},kmid=[];
+  if(!first){known=rd('gym-cloud-ids');kmid=rd('gym-cloud-mids');try{seeds=JSON.parse(localStorage.getItem('gym-seed-ids')||'{}')}catch(e){}seeds={...seeds,...SEEDMAP}}
+  /* Medidas: se juntan; una que estaba en la nube y ya no está se borró en otro móvil */
+  const cmm=new Map(docs.map(d=>d.data()).filter(x=>x&&x.kind==='measure'&&x.t).map(x=>[x.id,clone(x)]));let mo=[];
+  r.meas.forEach(l=>{const c=cmm.get(l.id);
+   if(c){if((l.at||0)>(c.at||0))mo.push(l);else{mo.push(c);r.msent[c.id]=ser(c)}cmm.delete(l.id)}
+   else if(r.msent[l.id]!==undefined||kmid.includes(l.id))return;
+   else mo.push(l)});
+  cmm.forEach(c=>{if(r.msent[c.id]!==undefined||r.mdel.includes(c.id))return;mo.push(c);r.msent[c.id]=ser(c)});
+  setMeas(mo.filter(m=>!r.mdel.includes(m.id)).sort((a,b)=>a.t-b.t));
   const cm=new Map(cloud.map(n=>[n.id,n])),fromCloud=new Set();let out=[];
   r.notes.forEach(l=>{const c=cm.get(l.id);
    if(c){if(l.updated>c.updated)out.push(l);else{out.push(c);fromCloud.add(c.id)}cm.delete(l.id)}
@@ -1744,40 +1810,116 @@ function useCloud(notes,setNotes){
   out=out.filter(n=>!r.del.includes(n.id));
   out.forEach(n=>{if(fromCloud.has(n.id))r.sent[n.id]=ser(n)});
   Object.keys(r.sent).forEach(id=>{if(!out.some(n=>n.id===id)&&!r.notes.some(n=>n.id===id))delete r.sent[id]});
-  if(!r.ready){const junk=out.filter(isEmpty);if(junk.length){junk.forEach(n=>{if(!r.del.includes(n.id))r.del.push(n.id);delete r.sent[n.id]});out=out.filter(n=>!isEmpty(n));saveDel()}}
-  /* Ajustes: gana la versión más reciente (nube o este móvil) */
-  let c={...CFG0,...r.cfg};if(cc&&(cc.at||0)>=(c.at||0))c={...CFG0,...cc};
+  if(!r.ready){const junk=out.filter(isEmpty);if(junk.length){junk.forEach(n=>{if(!r.del.includes(n.id))r.del.push(n.id);delete r.sent[n.id]});out=out.filter(n=>!isEmpty(n))}}
+  /* Ajustes: gana la versión más reciente; la primera vez en un móvil, la de la nube si la hay */
+  let c={...CFG0,...r.cfg};if(cc&&(first||(cc.at||0)>=(c.at||0)))c={...CFG0,...cc};
   if(!out.length&&!hasMeta){out.push(...seed());c.v=2}
   else if((c.v||0)<2){out=migrate(out);c.v=2}
   if(!c.at)c.at=Date.now();
-  if(!hasMeta)r.coll.doc('meta').set({seeded:1}).catch(()=>{});
-  r.ready=true;saveIds();setNotes(out);keepCfg(c);setSt('ok');
-  if(!cc||ser(cc)!==ser(c))r.coll.doc('cfg').set(clone(c)).catch(()=>{});
+  if(!hasMeta)coll.doc('meta').set({seeded:1}).catch(()=>{});
+  r.ready=true;saveIds();saveDel();setNotes(out);keepCfg(c);setSt('ok');
+  if(!cc||ser(cc)!==ser(c))r.cfgDirty=true;
+  if(first){r.fb.first=false;const s=fbLoad();if(s&&s.uid===r.fb.uid)fbSave({...s,first:false})}
+  kick(300);
  };
- useEffect(()=>{if(!r.ready)return;clearTimeout(r.timer);r.timer=setTimeout(flush,700)},[notes]);
+ const go=force=>{if(!r.coll)return;if(force!==true&&r.fb&&r.ready&&Date.now()-r.lastPull<300000){flush();return}setSt('syncing');pull().catch(fail)};
+ const attach=s=>{clearTimeout(r.timer);r.fb=s;r.coll=fbColl(s);r.ready=false;go(true)};
+ const signOut=why=>{clearTimeout(r.timer);fbSave(null);r.coll=null;r.fb=null;r.ready=false;r.sent={};r.del=[];r.msent={};r.mdel=[];r.cfgDirty=false;saveIds();saveDel();setAcct(why==='gone'?{gone:true}:null);setSt('local')};
+ useEffect(()=>{if(r.ready)kick()},[notes]);
  useEffect(()=>{
-  if(!hasClaude){if((r.cfg.v||0)<2)setCfg({v:2});try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}return}
-  const go=()=>{if(!r.coll)return;setSt('syncing');pull().catch(()=>setSt('error'))};
-  (async()=>{try{const c=window.claude;const db=await c.use('db'),user=await c.use('user');if(!db||!user)return;const id=await user.id();if(!id)return;r.coll=db.collection('data/users/'+id);go()}catch(e){setSt('error')}})();
-  const vis=()=>{if(document.visibilityState==='visible')go()};
+  const vis=()=>{if(document.visibilityState==='visible')go();else flush()};
   document.addEventListener('visibilitychange',vis);window.addEventListener('online',go);
-  return()=>{document.removeEventListener('visibilitychange',vis);window.removeEventListener('online',go)};
+  const off=()=>{document.removeEventListener('visibilitychange',vis);window.removeEventListener('online',go)};
+  const s=fbLoad();
+  if(s&&s.ver){attach(s);return off}
+  if(!hasClaude){if((r.cfg.v||0)<2)setCfg({v:2});try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}return off}
+  (async()=>{try{const c=window.claude;const db=await c.use('db'),user=await c.use('user');if(!db||!user||r.fb)return;const id=await user.id();if(!id||r.fb)return;r.coll=db.collection('data/users/'+id);go(true)}catch(e){if(!r.fb)setSt('error')}})();
+  return off;
  },[]);
- const label=hasClaude?{local:'Solo en este dispositivo',syncing:'Sincronizando…',ok:'Guardado en la nube',error:'Sin conexión · guardado en el móvil · toca para reintentar'}[st]:'Guardado en este móvil';
+ /* Cuenta */
+ const start=j=>{const s={uid:j.localId,email:j.email,it:j.idToken,rt:j.refreshToken,exp:Date.now()+(+j.expiresIn||3600)*1000,ver:false,first:true};fbSave(s);return s};
+ const check=async s=>{
+  const j=await fbAuth('lookup',{idToken:await fbToken(s)}),u=j.users&&j.users[0];
+  if(!u||!u.emailVerified){setAcct({...s});return false}
+  s.ver=true;await fbToken(s,true);fbSave(s);setAcct({...s});attach(s);return true;
+ };
  const sortM=a=>[...a].sort((x,y)=>x.t-y.t);
- return {st,label,meas,cfg,setCfg,mode:hasClaude?'cloud':'local',
-  saveMeasure:async e=>{if(r.coll)await r.coll.doc('me_'+e.id).set(clone(e));setMeas(sortM([...r.meas.filter(x=>x.id!==e.id),e]))},
-  delMeasure:async e=>{if(r.coll)await r.coll.doc('me_'+e.id).delete();setMeas(r.meas.filter(x=>x.id!==e.id))},
+ const fbOn=!!(acct&&acct.ver);
+ const label=fbOn?{local:'Guardado en este móvil',syncing:'Guardando en la nube…',ok:'Guardado en la nube',error:'Sin conexión · guardado en el móvil · toca para reintentar',denied:'Guardado solo en este móvil · tu email no tiene permiso para la nube'}[st]
+  :hasClaude?{local:'Solo en este dispositivo',syncing:'Sincronizando…',ok:'Guardado en la nube',error:'Sin conexión · guardado en el móvil · toca para reintentar'}[st]:'Guardado en este móvil';
+ return {st,label,meas,cfg,setCfg,mode:(fbOn&&st!=='denied')||hasClaude?'cloud':'local',
+  acct:acct&&acct.uid?acct:null,gone:!!(acct&&acct.gone),
+  signUp:async(email,pw)=>{const s=start(await fbAuth('signUp',{email,password:pw,returnSecureToken:true}));setAcct({...s});await fbAuth('sendOobCode',{requestType:'VERIFY_EMAIL',idToken:s.it}).catch(()=>{})},
+  signIn:async(email,pw)=>{const s=start(await fbAuth('signInWithPassword',{email,password:pw,returnSecureToken:true}));return check(s)},
+  checkVerified:async()=>{const s=fbLoad();if(!s)return false;return check(s)},
+  resend:async()=>{const s=fbLoad();if(s)await fbAuth('sendOobCode',{requestType:'VERIFY_EMAIL',idToken:await fbToken(s)})},
+  resetPw:email=>fbAuth('sendOobCode',{requestType:'PASSWORD_RESET',email}),
+  signOut:()=>signOut(),
+  saveMeasure:async e=>{const m={...clone(e),at:Date.now()};setMeas(sortM([...r.meas.filter(x=>x.id!==m.id),m]))},
+  delMeasure:async e=>{if(r.coll){if(!r.mdel.includes(e.id))r.mdel.push(e.id);delete r.msent[e.id];saveDel()}setMeas(r.meas.filter(x=>x.id!==e.id))},
   remove:id=>{if(!r.del.includes(id))r.del.push(id);delete r.sent[id];saveDel()},
-  retry:()=>{if(r.coll){setSt('syncing');pull().then(flush).catch(()=>setSt('error'))}},
+  retry:()=>{if(r.coll){setSt('syncing');pull().catch(fail)}},
   /* Importar una copia: reemplaza rutinas, medidas y ajustes */
   replaceAll:async d=>{
-   const ids=new Set(d.notes.map(n=>n.id));
-   r.del=r.del.filter(id=>!ids.has(id));
-   r.notes.forEach(n=>{if(!ids.has(n.id)){if(!r.del.includes(n.id))r.del.push(n.id);delete r.sent[n.id]}});saveDel();
-   if(r.coll){for(const m of r.meas)if(!d.meas.some(x=>x.id===m.id))await r.coll.doc('me_'+m.id).delete();for(const m of d.meas)await r.coll.doc('me_'+m.id).set(clone(m))}
-   setMeas(sortM(d.meas));setNotes(d.notes.map(clone));setCfg({...CFG0,...d.cfg,v:2});
+   const ids=new Set(d.notes.map(n=>n.id)),mids=new Set(d.meas.map(m=>m.id));
+   r.del=r.del.filter(id=>!ids.has(id));r.mdel=r.mdel.filter(id=>!mids.has(id));
+   r.notes.forEach(n=>{if(!ids.has(n.id)){if(!r.del.includes(n.id))r.del.push(n.id);delete r.sent[n.id]}});
+   if(r.coll)r.meas.forEach(m=>{if(!mids.has(m.id)){if(!r.mdel.includes(m.id))r.mdel.push(m.id);delete r.msent[m.id]}});
+   saveDel();
+   /* Con nube, lo importado pasa a ser lo más reciente (sin cambiar el orden entre días) para que no lo pise la copia de la nube */
+   const top=Math.max(0,...d.notes.map(n=>n.updated||0)),sh=r.coll?Math.max(0,Date.now()-top):0,now=Date.now();
+   setMeas(sortM(d.meas.map(m=>r.coll?{...clone(m),at:now}:clone(m))));setNotes(d.notes.map(n=>sh?{...clone(n),updated:(n.updated||0)+sh}:clone(n)));setCfg({...CFG0,...d.cfg,v:2});
   }};
+}
+
+/* ===== Tarjeta de Ajustes: copia en la nube ===== */
+function CloudCard({cloud}){
+ const a=cloud.acct;
+ const [open,setOpen]=useState(false),[mode,setMode]=useState('in'),[email,setEmail]=useState(''),[pw,setPw]=useState(''),[busy,setBusy]=useState(false),[msg,setMsg]=useState(null),[sure,setSure]=useState(false);
+ const run=async(f,ok)=>{setMsg(null);setBusy(true);try{const v=await f();const m=typeof ok==='function'?ok(v):ok;if(m)setMsg(m)}catch(e){setMsg(fbMsg(e))}setBusy(false)};
+ const chip=on=>({height:34,borderRadius:10,fontSize:13,fontWeight:600,background:on?'#e5e5e5':'rgba(255,255,255,.07)',color:on?'#000':'#d4d4d4'});
+ const inp={height:46,padding:'0 14px',fontSize:16,width:'100%'};
+ const em=email.trim();
+ const submit=e=>{e.preventDefault();if(busy)return;
+  if(mode==='up')run(()=>cloud.signUp(em,pw));
+  else run(()=>cloud.signIn(em,pw),ok=>ok?null:'Aún no has confirmado tu email. Mira tu correo.')};
+ const head=(r)=>html`<div className="flex justify-between items-baseline text-sm"><span className="ch">Copia en la nube</span><span className="mut">${r}</span></div>`;
+ const note=t=>html`<div className="field text-sm text-neutral-300 pop-in" style=${{padding:'10px 12px'}}>${t}</div>`;
+ const out=html`<button disabled=${busy} onClick=${()=>{if(sure){setSure(false);cloud.signOut()}else{setSure(true);setTimeout(()=>setSure(false),4000)}}} className="chip h-11 flex-1 rounded-full text-sm text-neutral-200">${sure?'Toca otra vez para salir':'Cerrar sesión'}</button>`;
+ const m=msg&&html`<p className="text-sm text-neutral-200" style=${{margin:0}} role="status">${msg}</p>`;
+ if(a&&a.ver){
+  const st=cloud.st,dot=st==='ok'?'#C6F432':st==='syncing'?'#8b9096':st==='denied'?'#f08a8a':'#f0b92b';
+  return html`<div className="card p-4" style=${{display:'grid',gap:12}}>
+   ${head(st==='ok'?'Activada':st==='syncing'?'Guardando…':st==='denied'?'Sin permiso':'Sin conexión')}
+   <div style=${{display:'flex',alignItems:'center',gap:10}}><span aria-hidden="true" style=${{width:9,height:9,borderRadius:5,flexShrink:0,background:dot}}></span><div className="text-sm" style=${{minWidth:0,color:'#d9dad5',overflowWrap:'anywhere'}}>Conectado como <b>${a.email}</b></div></div>
+   ${st==='denied'?note('Tu email aún no tiene permiso para usar la nube. Pídele a Manuel que lo añada. Mientras tanto, todo se sigue guardando en este móvil.')
+    :html`<p className="text-sm text-neutral-300 leading-snug" style=${{margin:0}}>Tus rutinas, medidas y ajustes se guardan solos en la nube unos segundos después de cada cambio. En otro móvil, entra con la misma cuenta y te aparecerá todo.</p>`}
+   <div className="flex gap-2"><button disabled=${busy||st==='syncing'} onClick=${cloud.retry} className="btn-w h-11 flex-1 text-sm">Guardar ahora</button>${out}</div>
+   ${m}
+  </div>`;
+ }
+ if(a)return html`<div className="card p-4" style=${{display:'grid',gap:12}}>
+  ${head('Falta confirmar')}
+  <p className="text-sm text-neutral-300 leading-snug" style=${{margin:0}}>Te hemos mandado un correo a <b style=${{overflowWrap:'anywhere'}}>${a.email}</b>. Abre el enlace que trae (si no lo ves, mira en Spam) y vuelve aquí.</p>
+  <button disabled=${busy} onClick=${()=>run(cloud.checkVerified,ok=>ok?null:'Todavía no consta como confirmado. Abre el enlace del correo y vuelve a probar.')} className="btn-w h-12 w-full text-sm">Ya lo he confirmado</button>
+  <div className="flex gap-2"><button disabled=${busy} onClick=${()=>run(cloud.resend,'Correo enviado otra vez.')} className="chip h-11 flex-1 rounded-full text-sm text-neutral-200">Reenviar correo</button>${out}</div>
+  ${m}
+ </div>`;
+ return html`<div className="card p-4" style=${{display:'grid',gap:12}}>
+  ${head('Sin cuenta')}
+  <p className="text-sm text-neutral-300 leading-snug" style=${{margin:0}}>Opcional. Con una cuenta, tus datos se guardan solos en la nube y puedes recuperarlos si cambias de móvil. Sin cuenta todo sigue igual, guardado solo en este móvil.</p>
+  ${cloud.gone&&!open&&note('Se ha cerrado la sesión de la nube. Tus datos siguen en este móvil: vuelve a entrar para seguir guardándolos.')}
+  ${!open?html`<button onClick=${()=>setOpen(true)} className="btn-w h-12 w-full text-sm">Entrar o crear cuenta</button>`
+  :html`<form onSubmit=${submit} className="pop-in" style=${{display:'grid',gap:10}}>
+   <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}><button type="button" onClick=${()=>{setMode('in');setMsg(null)}} style=${chip(mode==='in')}>Entrar</button><button type="button" onClick=${()=>{setMode('up');setMsg(null)}} style=${chip(mode==='up')}>Crear cuenta</button></div>
+   <input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck=${false} placeholder="Email" aria-label="Email" value=${email} onChange=${e=>setEmail(e.target.value)} className="field" style=${inp}/>
+   <input type="password" autoComplete=${mode==='up'?'new-password':'current-password'} placeholder=${mode==='up'?'Contraseña (mínimo 6 caracteres)':'Contraseña'} aria-label="Contraseña" value=${pw} onChange=${e=>setPw(e.target.value)} className="field" style=${inp}/>
+   <button type="submit" disabled=${busy||!em||!pw} className="btn-w h-12 w-full text-sm" style=${{opacity:busy||!em||!pw?.5:1}}>${busy?'Un momento…':mode==='up'?'Crear cuenta':'Entrar'}</button>
+   ${mode==='up'?html`<p className="text-xs mut" style=${{margin:0}}>Te llegará un correo para confirmar que el email es tuyo. Por ahora la nube solo funciona con los emails que autorice Manuel.</p>`
+    :html`<button type="button" disabled=${busy} onClick=${()=>em?run(()=>cloud.resetPw(em),'Te hemos mandado un correo para cambiar la contraseña.'):setMsg('Escribe primero tu email.')} className="text-xs mut" style=${{justifySelf:'start'}}>He olvidado la contraseña</button>`}
+  </form>`}
+  ${m}
+ </div>`;
 }
 
 function ExitAsk({note,onSave,onLeave,onStay}){
@@ -1919,7 +2061,7 @@ function App(){
       <div className="rsub">${info(n)}${!ft&&n.tags.length>0?n.tags.map(t=>html`<span key=${t} className="rtag">${t}</span>`):''}</div>
       ${histTxt(n)&&html`<div className="rlast">${histTxt(n)}</div>`}</div>
      <span className="mut">${I(P.chev,18)}</span></button>`)}
-    ${!(ordering&&ft)&&shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':cloud.mode==='cloud'&&cloud.st!=='ok'?'Cargando tus rutinas…':'Aún no tienes rutinas. Pulsa «Nueva» para crear la primera.'}</p>`}
+    ${!(ordering&&ft)&&shown.length===0&&html`<p className="mut text-center py-8">${notes.length?'No hay rutinas con este filtro.':cloud.mode==='cloud'&&(cloud.st==='syncing'||cloud.st==='local')?'Cargando tus rutinas…':'Aún no tienes rutinas. Pulsa «Nueva» para crear la primera.'}</p>`}
    </div>
    </div>`}
    ${tab==='prog'&&html`<div className="space-y-3">
@@ -1942,6 +2084,7 @@ function App(){
    </div>`}
    ${tab==='set'&&html`<div className="space-y-3">
    <h1 className="text-2xl font-semibold px-1" style=${{paddingTop:8}}>Ajustes</h1>
+   <${CloudCard} cloud=${cloud}/>
    <${BackupCard} cfg=${cfg} mode=${cloud.mode} msg=${bmsg} onExport=${doExport} onPick=${()=>fileRef.current&&fileRef.current.click()}/>
    <input ref=${fileRef} type="file" accept="application/json,.json" className="hidden" onChange=${pickFile}/>
    <${NotifCard} notes=${notes} cfg=${cfg}/>

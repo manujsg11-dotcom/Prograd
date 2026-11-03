@@ -1,0 +1,20 @@
+// Reglas de seguridad de Firestore para Prograd (copia de referencia).
+// Lo que funciona de verdad es lo pegado en Firebase › Firestore Database › Reglas.
+// Cada persona solo puede leer y guardar su propio cajón (users/<su id>/d/...),
+// y solo si su email está confirmado y está en la lista de PERMITIDOS.
+// Para dejar entrar a un amigo: añade su email a la lista (en minúsculas, entre comillas y separado por comas) y pulsa «Publicar».
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function permitido() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in [
+          'manujsg11@gmail.com'
+        ];
+    }
+    match /users/{uid}/d/{doc} {
+      allow read, write: if permitido() && request.auth.uid == uid;
+    }
+  }
+}
