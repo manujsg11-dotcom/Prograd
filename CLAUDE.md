@@ -44,7 +44,7 @@ App de gimnasio de Manuel para iPhone: rutinas, registro de series (kg × reps),
 - **Android:** `IS_AND` (por el navegador) cambia los textos de instalar y avisos a Chrome/Android (`INSTALL_TXT`). El temporizador en Android no usa Atajos: abre el reloj con un intent `SET_TIMER`. **Sin probar aún en un Android real**; si no funciona, el plan B es un temporizador dentro de la app solo para Android.
 
 ## Decisiones ya tomadas
-- Descartado: clasificaciones entre amigos, vídeos o imágenes de técnica, fotos de progreso con IA, anuncios, suscripción, temporizador propio y (de momento) un cuestionario de bienvenida.
+- Descartado: clasificaciones entre amigos, vídeos o imágenes de técnica, fotos de progreso con IA, anuncios, suscripción, temporizador propio, (de momento) un cuestionario de bienvenida e iniciar sesión con Google o Apple (Apple cuesta 99 € al año y Google suele fallar en la app instalada en el iPhone; se queda email y contraseña).
 - Gratis; como mucho, una donación voluntaria en el futuro.
 
 ## Pendiente
