@@ -467,7 +467,7 @@ function migrate(notes){
 }
 /* Semana de descarga: mitad de series y −10 % de peso; los pesos de antes se guardan para volver a ellos */
 const dlSets=t=>Math.max(1,Math.round(t.s/2));
-const startDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(b.type!=='exercise'||!tgtOf(b)||b.dl)return b;ch=true;const kg=Math.max(0,...b.sets.map(x=>N(x.kg))),nk=kg>0?fN(toInc(kg*0.9,tgtOf(b).inc||1)):'';return{...b,dl:{sets:b.sets.map(x=>({...x,done:false,doneAt:null}))},sets:Array.from({length:dlSets(tgtOf(b))},()=>mkSet(nk,''))}});return ch?{...n,blocks,updated:Date.now()}:n};
+const startDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(b.type!=='exercise'||!tgtOf(b)||b.dl)return b;ch=true;const kg=Math.max(0,...b.sets.map(x=>N(x.kg))),nk=kg>0?fN(toInc(kg*(isAs(b.name)?1.1:0.9),tgtOf(b).inc||1)):'';return{...b,dl:{sets:b.sets.map(x=>({...x,done:false,doneAt:null}))},sets:Array.from({length:dlSets(tgtOf(b))},()=>mkSet(nk,''))}});return ch?{...n,blocks,updated:Date.now()}:n};
 const endDl=n=>{let ch=false;const blocks=n.blocks.map(b=>{if(!b.dl)return b;ch=true;const{dl,...r}=b;return{...r,sets:dl.sets.map(x=>({...x,done:false,doneAt:null}))}});return ch?{...n,blocks,updated:Date.now()}:n};
 const CFG0={v:0,plan:'A',pins:null,pinSel:'',deload:0,lastDeload:0,lastExport:0,at:0};
 const loadCfg=()=>{try{const c=JSON.parse(localStorage.getItem('gym-cfg')||'null');if(c&&typeof c==='object')return{...CFG0,...c}}catch(e){}return{...CFG0}};
@@ -491,9 +491,21 @@ const isEmpty=n=>!n.blocks.length&&!(n.hist&&n.hist.length)&&(!(n.title||'').tri
 const rnd=x=>Math.round(x*100)/100;
 const toInc=(x,inc)=>Math.max(0,rnd(Math.round(x/inc)*inc));
 const restOf=t=>t.big?"2–3'":"1–2'";
-/* cur/prev = [[kg,reps],...] de la última y la penúltima sesión */
-function prog(t,cur,prev){
+/* En las asistidas el peso apuntado es la ayuda de la máquina: progresar es bajarla */
+const isAs=name=>/asistid/.test(norm(name));
+function progAs(t,cur,prev){
+ const kg=Math.min(...cur.map(x=>x[0])),reps=cur.map(x=>x[1]).join(' · '),low=cur.some(x=>x[1]<t.lo);
+ if(cur.length>=t.s&&cur.every(x=>x[1]>=t.hi)){
+  if(kg<=0)return{k:'hold',kg:0,from:0,msg:'Ya lo haces sin ayuda',why:'Llegaste a '+t.hi+' reps en todas las series ('+reps+')'};
+  const nk=rnd(Math.max(0,kg-t.inc));return{k:'up',kg:nk,from:kg,msg:'Baja la ayuda a '+fN(nk)+' kg',why:'Llegaste a '+t.hi+' reps en todas las series ('+reps+')'}}
+ if(low&&prev&&prev.length&&prev.some(x=>x[1]<t.lo)&&Math.min(...prev.map(x=>x[0]))===kg){const nk=Math.max(toInc(kg*1.1,t.inc),rnd(kg+t.inc));return{k:'down',kg:nk,from:kg,msg:'Sube la ayuda a '+fN(nk)+' kg',why:'Dos sesiones sin llegar a '+t.lo+' reps: un poco más de ayuda y vuelve a bajarla'}}
+ if(low)return{k:'hold',kg,from:kg,msg:'Mantén '+fN(kg)+' kg de ayuda',why:'Busca al menos '+t.lo+' reps en todas las series ('+reps+')'};
+ return{k:'reps',kg,from:kg,msg:'Mantén '+fN(kg)+' kg de ayuda y suma reps',why:'Cuando hagas '+t.hi+' en todas, toca bajar la ayuda ('+reps+')'};
+}
+/* cur/prev = [[kg,reps],...] de la última y la penúltima sesión; as = ejercicio asistido */
+function prog(t,cur,prev,as){
  if(!t||!cur||!cur.length)return null;
+ if(as)return progAs(t,cur,prev);
  const kg=Math.max(...cur.map(x=>x[0])),reps=cur.map(x=>x[1]).join(' · ');
  if(cur.length>=t.s&&cur.every(x=>x[1]>=t.hi)){const nk=rnd(kg+t.inc);return{k:'up',kg:nk,from:kg,msg:'Sube a '+fN(nk)+' kg',why:'Llegaste a '+t.hi+' reps en todas las series ('+reps+')'}}
  const low=cur.some(x=>x[1]<t.lo);
@@ -637,10 +649,16 @@ function Anatomy({b,set}){
 }
 
 /* ===== Objetivo y progresión en cada ejercicio ===== */
+/* Guarda lo escrito tal cual mientras se teclea: si no, la coma de «1,25» desaparecería al escribirla */
+function TgtField({k,l,b,t,set}){
+ const shown=String(t[k]).replace('.',','),[v,setV]=useState(shown);
+ useEffect(()=>{if(N(v)!==t[k])setV(shown)},[t[k]]);
+ return html`<label className="flex flex-col gap-1 text-xs mut"><span>${l}</span>
+  <input id=${'t-'+b.id+'-'+k} type="text" inputMode=${k==='inc'?'decimal':'numeric'} value=${v} onChange=${e=>{const x=e.target.value.replace(/[^0-9.,]/g,''),n=N(x);setV(x);set({...b,tgt:{...t,[k]:k==='inc'?n:Math.round(n)}})}} onBlur=${()=>setV(shown)} className="field h-10 w-full text-center text-base text-white num"/></label>`;
+}
 function TargetEdit({b,set}){
  const t=tgtOf(b);
- const F=(k,l,step)=>html`<label className="flex flex-col gap-1 text-xs mut"><span>${l}</span>
-  <input id=${'t-'+b.id+'-'+k} type="text" inputMode="decimal" value=${String(t[k]).replace('.',',')} onChange=${e=>{const v=N(e.target.value);set({...b,tgt:{...t,[k]:k==='inc'?v:Math.round(v)}})}} className="field h-10 w-full text-center text-base text-white num"/></label>`;
+ const F=(k,l)=>html`<${TgtField} k=${k} l=${l} b=${b} t=${t} set=${set}/>`;
  return html`<div className="field p-3 mb-3 push-in">
   <div className="grid grid-cols-4 gap-2">${F('s','Series')}${F('lo','Reps mín.')}${F('hi','Reps máx.')}${F('inc','Subir (kg)')}</div>
   <div className="flex items-center gap-2 mt-3 text-sm">
@@ -667,7 +685,7 @@ function ProgBox({b,p,first,applied,onApply}){
 
 /* Bloques */
 function Exercise({b,set,hist,best,remember,dl,warm}){
- const [open,setOpen]=useState(null);
+ const [open,setOpen]=useState(null),[miss,setMiss]=useState(null);
  const wk=b.id+':'+ymd(Date.now());
  const [wHide,setWHide]=useState(()=>{try{return localStorage.getItem('gym-warm')===wk}catch(e){return false}});
  const hideWarm=()=>{setWHide(true);try{localStorage.setItem('gym-warm',wk)}catch(e){}};
@@ -676,14 +694,18 @@ function Exercise({b,set,hist,best,remember,dl,warm}){
  const del=id=>{remember('Serie borrada');set({...b,sets:b.sets.filter(x=>x.id!==id)})};
  const done=b.sets.filter(s=>s.done).length;
  const last=hist[0]||null,prev=hist[1]||null,t=tgtOf(b);
- const p=t&&last?prog(t,last.s,prev&&prev.s):null;
+ const p=t&&last?prog(t,last.s,prev&&prev.s,isAs(b.name)):null;
  const applied=isApplied(b,p);
  const ph=t?(t.lo===t.hi?String(t.lo):t.lo+'–'+t.hi):'0';
+ /* Sin reps (o sin peso) la serie no se guardaría: en vez de marcarla, se lleva al usuario a la casilla que falta */
+ const needOf=s=>String(s.kg).trim()===''&&!isBw(b)?'kg':N(s.reps)>0?null:'rp';
+ const tick=s=>{if(!s.done){const f=needOf(s);if(f){setMiss(s.id);const el=document.getElementById(f+'-'+s.id);el&&el.focus();return}}setMiss(null);up(s.id,{done:!s.done,doneAt:s.done?null:Date.now()});if(!s.done){try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}atajoSerie(t)}};
+ const redIf=(s,f)=>miss===s.id&&needOf(s)===f?{boxShadow:'inset 0 0 0 1.5px #ee4b55'}:null;
  return html`<div>
   <input list="exnames" autoComplete="off" value=${b.name} onChange=${e=>set({...b,name:e.target.value})} placeholder="Nombre del ejercicio" className="w-full bg-transparent text-xl font-semibold outline-none"/>
   ${t&&html`<div className="text-sm text-neutral-300 mt-0.5 num">${t.s} × ${ph} reps <span className="mut">· descanso ${restOf(t)} · +${fN(t.inc)} kg al subir</span></div>`}
   ${(last||best)&&html`<div className="text-xs mut mt-1 num leading-relaxed">${last&&html`<span>Última vez (${ago(last.t)}${last.demo?', ejemplo':''}): <span className="text-neutral-300">${last.s.map(x=>fN(x[0])+'×'+x[1]).join(' · ')}</span></span>`}${last&&best?html`<span> · </span>`:''}${best?html`<span>1RM est. <span className="text-neutral-300">${fN(best)} kg</span></span>`:''}</div>`}
-  ${warm&&!wHide&&!b.sets.some(x=>x.done)&&(()=>{const s1=b.sets.find(x=>N(x.kg)>0),w=s1?Math.round(N(s1.kg)*.5/2.5)*2.5:0;return html`<div className="field pop-in" style=${{marginTop:12,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}}>
+  ${warm&&!wHide&&!isAs(b.name)&&!b.sets.some(x=>x.done)&&(()=>{const s1=b.sets.find(x=>N(x.kg)>0),w=s1?Math.round(N(s1.kg)*.5/2.5)*2.5:0;return html`<div className="field pop-in" style=${{marginTop:12,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}}>
    <div style=${{flex:1,minWidth:0}}><div className="text-xs mut">Calentamiento sugerido</div><div className="num" style=${{fontWeight:600,marginTop:1}}>${w>0?'8 × '+fN(w)+' kg':'8 reps con la mitad de tu peso'}</div></div>
    <button onClick=${hideWarm} style=${{...AB,height:32,padding:'0 12px'}}>Hecho</button>
    <button onClick=${hideWarm} style=${{...AB,height:32,padding:'0 12px',boxShadow:'none',color:'#8a8a8a'}}>Saltar</button>
@@ -697,10 +719,11 @@ function Exercise({b,set,hist,best,remember,dl,warm}){
   <div className="space-y-2">
   ${b.sets.map((s,i)=>html`<div key=${s.id} className="grid grid-cols-[1.5rem_1fr_1fr_2.75rem_1.5rem] gap-2 items-center pop-in">
     <span className="mut num text-center">${i+1}</span>
-    <input id=${'kg-'+s.id} type="text" inputMode="decimal" autoComplete="off" value=${s.kg} placeholder="0" onChange=${e=>up(s.id,{kg:e.target.value.replace(/[^0-9.,]/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')}/>
-    <input id=${'rp-'+s.id} type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value=${s.reps} placeholder=${ph} onChange=${e=>up(s.id,{reps:e.target.value.replace(/\D/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')}/>
-    <button aria-label="Marcar serie" onClick=${()=>{up(s.id,{done:!s.done,doneAt:s.done?null:Date.now()});if(!s.done){try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}atajoSerie(t)}}} className=${'h-11 rounded-xl grid place-items-center '+(s.done?'bg-neutral-200 text-black chk-pop':'chip text-transparent')}>${I(P.check,20)}</button>
+    <input id=${'kg-'+s.id} type="text" inputMode="decimal" autoComplete="off" value=${s.kg} placeholder="0" onChange=${e=>up(s.id,{kg:e.target.value.replace(/[^0-9.,]/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')} style=${redIf(s,'kg')}/>
+    <input id=${'rp-'+s.id} type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value=${s.reps} placeholder=${ph} onChange=${e=>up(s.id,{reps:e.target.value.replace(/\D/g,'')})} className=${'field w-full h-11 text-center text-lg num '+(s.done?'text-neutral-400':'')} style=${redIf(s,'rp')}/>
+    <button aria-label="Marcar serie" onClick=${()=>tick(s)} className=${'h-11 rounded-xl grid place-items-center '+(s.done?'bg-neutral-200 text-black chk-pop':'chip text-transparent')}>${I(P.check,20)}</button>
     <button aria-label="Borrar serie" onClick=${()=>del(s.id)} className="h-11 grid place-items-center text-neutral-600 hover:text-white">${I(P.x,15)}</button>
+    ${miss===s.id&&needOf(s)&&html`<p className="text-xs" style=${{gridColumn:'1 / -1',margin:0,color:'#ee4b55'}}>${needOf(s)==='kg'?'Apunta el peso para marcar la serie.':'Apunta las repeticiones para marcar la serie.'}</p>`}
   </div>`)}
   </div>
   <button onClick=${add} className="chip mt-3 h-11 w-full rounded-2xl text-neutral-300 font-medium">+ Añadir serie</button>
@@ -771,8 +794,10 @@ function activity(notes){
   n.blocks.forEach(b=>{if(b.type!=='exercise')return;const m=muscles(b);b.sets.forEach(x=>{if(!x.done)return;const t=x.doneAt||n.updated;days.add(day0(t));if(t<cut)return;const v=N(x.kg)*N(x.reps);wS++;wV+=v;m.ag.forEach(g=>{sets[g]=(sets[g]||0)+1;vol[g]=(vol[g]||0)+v});m.st.forEach(g=>st[g]=1)})})});
  return{days,sets,vol,st,wS,wV,w30};
 }
-/* Una serie cuenta si tiene reps; el peso puede ser 0 (p. ej. dominadas sin lastre) */
-const doneSets=b=>b.sets.filter(s=>s.done&&N(s.reps)>0&&String(s.kg).trim()!=='');
+/* Una serie cuenta si tiene reps; en peso corporal el peso puede ir vacío o a 0 (p. ej. dominadas sin lastre) */
+const isBw=b=>(b.eq||eqGuess(b.name).eq)==='bw';
+const setOk=(b,s)=>N(s.reps)>0&&(isBw(b)||String(s.kg).trim()!=='');
+const doneSets=b=>b.sets.filter(s=>s.done&&setOk(b,s));
 function analyse(note){
  const vol={},ms={},stb=new Set(),ex=[];let nS=0,tot=0;
  note.blocks.filter(b=>b.type==='exercise').forEach(b=>{const d=doneSets(b);if(!d.length)return;const m=muscles(b),gs=m.ag.length?m.ag:['other'];m.st.forEach(g=>stb.add(g));
@@ -781,7 +806,7 @@ function analyse(note){
  return{nS,tot,vol,ms,ex,st:[...stb]};
 }
 /* Plan de la próxima sesión a partir de lo que se acaba de hacer */
-const planOf=note=>note.blocks.filter(b=>b.type==='exercise'&&tgtOf(b)).map(b=>{const d=doneSets(b);if(!d.length)return null;const h=histOf(note,b.name);return{id:b.id,name:b.name,p:prog(tgtOf(b),d.map(s=>[N(s.kg),N(s.reps)]),h[0]&&h[0].s)}}).filter(x=>x&&x.p);
+const planOf=note=>note.blocks.filter(b=>b.type==='exercise'&&tgtOf(b)).map(b=>{const d=doneSets(b);if(!d.length)return null;const h=histOf(note,b.name);return{id:b.id,name:b.name,p:prog(tgtOf(b),d.map(s=>[N(s.kg),N(s.reps)]),h[0]&&h[0].s,isAs(b.name))}}).filter(x=>x&&x.p);
 const e1=(kg,r)=>kg*(1+r/30);
 const finishNote=(n,dl)=>{
  const a=analyse(n),m={},plan=dl?[]:planOf(n);Object.keys(a.vol).forEach(g=>m[g]={s:a.ms[g],v:Math.round(a.vol[g])});
@@ -812,10 +837,11 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
  const a=analyse(note),plan=dl?[]:planOf(note);
  const rows=Object.entries(a.vol).sort((x,y)=>y[1]-x[1]),mx=rows.length?rows[0][1]:1;
  const prs=[];
- a.ex.forEach(e=>{const key=norm(e.n);if(!key)return;const best=Math.max(...e.s.map(s=>e1(s[0],s[1])));if(!(best>0))return;let prev=0;
+ a.ex.forEach(e=>{const key=norm(e.n);if(!key||isAs(e.n))return;const best=Math.max(...e.s.map(s=>e1(s[0],s[1])));if(!(best>0))return;let prev=0;
   all.forEach(o=>{if(o.best&&o.best[key])prev=Math.max(prev,o.best[key]);if(o.id!==note.id)o.blocks.forEach(x=>{if(x.type==='exercise'&&norm(x.name)===key)x.sets.forEach(s=>{if(s.done&&N(s.kg)>0&&N(s.reps)>0)prev=Math.max(prev,e1(N(s.kg),N(s.reps)))})})});
   if(best>prev+0.05)prs.push({name:e.n,best,prev})});
  const ups=plan.filter(x=>x.p.k==='up').length;
+ const lost=note.blocks.filter(b=>b.type==='exercise').reduce((c,b)=>c+b.sets.filter(s=>s.done&&!setOk(b,s)).length,0);
  const rb=rankF(all,cfg,meas).mf,ra=rankF(all,cfg,meas,a.ex).mf;
  const rgains=Object.keys(a.ms).filter(g=>MUS[g]&&g!=='other'&&ra[g]!=null).map(g=>{const r0=stepOf(rb[g]||0),r1=stepOf(ra[g]);return{g,r0,r1,up:r1.step>r0.step}});
  const rups=rgains.filter(x=>x.up).length;
@@ -831,6 +857,7 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}><b>Rangos</b><span style=${{color:rups?'#C6F432':'#8a8f98',fontWeight:700,fontSize:13,animation:rups?'glowp 1.8s ease-in-out infinite':'none'}}>${rups?'¡Subes de rango!':'Sin cambios de rango'}</span></div>
      <div style=${{display:'grid',gap:8}}>${rgains.map(x=>html`<div key=${x.g} style=${{display:'flex',alignItems:'center',gap:10}}><${RankBadge} r=${x.r1} size=${26}/><div style=${{flex:1,minWidth:0,fontSize:14}}><b>${MUS[x.g]}</b> <span style=${{color:RANKS[x.r1.tier][1]}}>${rankName(x.r1)}</span>${x.up?html` <span style=${{color:'#C6F432',fontWeight:700,fontSize:12}}>↑ desde ${rankName(x.r0)}</span>`:''}</div></div>`)}</div>
     </div>`}
+    ${lost>0&&html`<div className="field px-3 py-2.5 text-sm" style=${{color:'#ee4b55'}}>${lost===1?'Hay 1 serie marcada sin peso o sin repeticiones: no se guardará. Cierra esto y complétala.':'Hay '+lost+' series marcadas sin peso o sin repeticiones: no se guardarán. Cierra esto y complétalas.'}</div>`}
     ${dl&&html`<div className="field px-3 py-2.5 text-sm text-neutral-300">Semana de descarga: este entreno se apunta en el historial, pero no cuenta para la progresión ni cambia tus pesos.</div>`}
     ${plan.length>0&&html`<div><h3 className="font-semibold mb-1">Próxima sesión</h3><p className="text-xs mut mb-2">Al guardar, los pesos que suben o bajan se ponen solos.</p><div className="space-y-2">${plan.map((x,k)=>html`<div key=${x.id} className="chip rounded-2xl p-3 flex items-center gap-3 pop-in" style=${{animationDelay:k*60+'ms'}}>
      <span className=${'h-8 w-8 shrink-0 rounded-full grid place-items-center '+(x.p.k==='up'?'bg-neutral-200 text-black':'bg-[#2a2a2a] text-neutral-300')}>${I(ic[x.p.k],15)}</span>
@@ -873,7 +900,7 @@ function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl,need,onRoutine}){
   <${RoutineField} tags=${note.tags||[]} all=${all} need=${need} onSave=${t=>{patch(n=>({...n,tags:t}));if(t[0]&&onRoutine)onRoutine(t[0])}}/>
   ${dl&&html`<div className="rounded-2xl bg-neutral-200 text-black px-4 py-3 text-sm"><b>Semana de descarga.</b> Mitad de series, −10 % de peso y RPE 6–7 (te sobran 3–4 reps).</div>`}
   <datalist id="exnames">${names.map(x=>html`<option key=${x} value=${x}/>`)}</datalist>
-  ${note.blocks.map((b,i)=>html`<${Block} key=${b.id} warm=${b.id===(note.blocks.find(x=>x.type==='exercise')||{}).id} b=${b} i=${i} n=${note.blocks.length} set=${setBlock} del=${delBlock} move=${move} remember=${remember} dl=${dl} hist=${b.type==='exercise'?histOf(note,b.name):null} best=${b.type==='exercise'&&note.best?note.best[norm(b.name)]:null}/>`)}
+  ${note.blocks.map((b,i)=>html`<${Block} key=${b.id} warm=${b.id===(note.blocks.find(x=>x.type==='exercise')||{}).id} b=${b} i=${i} n=${note.blocks.length} set=${setBlock} del=${delBlock} move=${move} remember=${remember} dl=${dl} hist=${b.type==='exercise'?histOf(note,b.name):null} best=${b.type==='exercise'&&note.best&&!isAs(b.name)?note.best[norm(b.name)]:null}/>`)}
   ${note.blocks.length===0&&html`<p className="mut py-6 text-center">Día vacío. Añade un ejercicio abajo.</p>`}
   <div className="grid grid-cols-3 gap-3">${A('exercise','Ejercicio','ex')}${A('todo','Checklist','ck')}${A('text','Nota','tx')}</div>
   ${hasEx&&html`<button onClick=${()=>setFin(true)} className="btn-w h-14 w-full flex items-center justify-center gap-2">${I(P.flag,18)}Terminar entreno</button>`}
@@ -887,7 +914,7 @@ function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl,need,onRoutine}){
 function ProgCard({notes,open,cfg,onStartDl,onEndDl}){
  const dl=cfg.deload,[cd,setCd]=useState(false),ready=[];let first=0;
  notes.forEach(n=>{(n.hist||[]).forEach(h=>{if(!h.demo&&(!first||h.t<first))first=h.t});if(dl)return;
-  n.blocks.forEach(b=>{if(b.type!=='exercise'||!tgtOf(b))return;const h=histOf(n,b.name);if(!h.length)return;const p=prog(tgtOf(b),h[0].s,h[1]&&h[1].s);if(p&&p.k==='up'&&!isApplied(b,p))ready.push({id:n.id,day:n.title,name:b.name,p})})});
+  n.blocks.forEach(b=>{if(b.type!=='exercise'||!tgtOf(b))return;const h=histOf(n,b.name);if(!h.length)return;const p=prog(tgtOf(b),h[0].s,h[1]&&h[1].s,isAs(b.name));if(p&&p.k==='up'&&!isApplied(b,p))ready.push({id:n.id,day:n.title,name:b.name,p})})});
  const start=cfg.lastDeload||first,wk=start?Math.floor((Date.now()-start)/(7*864e5))+1:0,due=wk>=5,dd=dl?daysSince(dl)+1:0;
  const ask=f=>{if(cd){setCd(false);f()}else{setCd(true);setTimeout(()=>setCd(false),3000)}};
  return html`<div className="card p-4">
@@ -1242,6 +1269,17 @@ async function pushHeal(notes,cfg){
   pushSave({...pushLoad(),sent:JSON.stringify([m.titulo,m.texto,salta])});return'renovada';
  }catch(e){return'error'}
 }
+/* El texto del aviso cambia según entrenas: se manda al servidor solo cuando cambia, estés en la pestaña que estés */
+async function pushSync(notes,cfg){
+ const p=pushLoad();if(!p.on||!pushReady()||Notification.permission!=='granted')return;
+ const m=pushMsg(notes,cfg),salta=trainedToday(notes)?ymd(Date.now()):'',key=JSON.stringify([m.titulo,m.texto,salta]);
+ if(key===p.sent)return;
+ try{
+  const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();if(!sub)return;
+  const r=await fetch(PUSH_SERVER+'/mensaje-nuevo',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,titulo:m.titulo,texto:m.texto,salta})});
+  if(r.ok)pushSave({...pushLoad(),sent:key});
+ }catch(e){}
+}
 function nextAviso(p,trained){
  const hm=restaMin(p.hora,p.antes),[h,mi]=hm.split(':').map(Number),now=new Date();
  for(let k=0;k<8;k++){const d=new Date(now);d.setDate(now.getDate()+k);d.setHours(h,mi,0,0);if(d<=now||!p.dias.includes(d.getDay())||(k===0&&trained))continue;
@@ -1283,8 +1321,6 @@ function NotifCard({notes,cfg}){
  /* Cambios de hora o días: se vuelven a mandar al servidor */
  const first=useRef(true);
  useEffect(()=>{if(first.current){first.current=false;return}if(!listo||!p.on)return;const id=setTimeout(async()=>{try{const sub=await getSub();if(sub)await enviar(p,sub)}catch(e){}},800);return()=>clearTimeout(id)},[p.hora,p.antes,p.dias.join(',')]);
- /* El texto cambia según entrenas: se manda solo cuando cambia */
- useEffect(()=>{if(!listo||!p.on)return;const key=JSON.stringify([m.titulo,m.texto,salta]);if(key===p.sent)return;const id=setTimeout(async()=>{try{const sub=await getSub();if(!sub)return;await api('/mensaje-nuevo',{endpoint:sub.endpoint,titulo:m.titulo,texto:m.texto,salta});upd({sent:key})}catch(e){}},1500);return()=>clearTimeout(id)},[m.titulo,m.texto,salta,p.on]);
  const chip=on=>({height:34,borderRadius:10,fontSize:13,fontWeight:600,background:on?'#e5e5e5':'rgba(255,255,255,.07)',color:on?'#000':'#d4d4d4'});
  const row={display:'flex',alignItems:'center',justifyContent:'space-between',gap:12};
  const Tog=(v,f)=>html`<button role="switch" aria-checked=${v} aria-label="Activar notificaciones" disabled=${busy} onClick=${()=>f(!v)} style=${{width:52,height:30,borderRadius:15,background:v?'#C6F432':'rgba(255,255,255,.16)',position:'relative',flexShrink:0,opacity:busy?.6:1}}><span style=${{position:'absolute',top:3,left:v?25:3,width:24,height:24,borderRadius:12,background:v?'#0B0D10':'#e5e5e5',transition:'left .3s var(--spring)'}}></span></button>`;
@@ -1975,6 +2011,10 @@ function App(){
  const cloud=useCloud(notes,setNotes),cfg=cloud.cfg,dl=!!cfg.deload;
  useEffect(()=>{if(!cfg.shake)cloud.setCfg({shake:BOOT_OLD?'legacy':'none'})},[]);
  useEffect(()=>{const id=setTimeout(()=>{pushHeal(notes,cfg)},4000);return()=>clearTimeout(id)},[]);
+ /* Avisos: el servidor se entera de lo entrenado al momento, y también al salir de la app o volver a ella */
+ const pushRef=useRef(null);pushRef.current={notes,cfg};
+ useEffect(()=>{const id=setTimeout(()=>pushSync(notes,cfg),1500);return()=>clearTimeout(id)},[notes,cfg]);
+ useEffect(()=>{const f=()=>pushSync(pushRef.current.notes,pushRef.current.cfg);document.addEventListener('visibilitychange',f);return()=>document.removeEventListener('visibilitychange',f)},[]);
  /* Pantalla de carga: solo se ve mientras la app carga de verdad; en cuanto está lista se funde */
  useEffect(()=>{const s=document.getElementById('splash');if(s){s.style.opacity='0';setTimeout(()=>s.remove(),400)}},[]);
  useEffect(()=>{setTag(PLANS[cfg.plan]?PLANS[cfg.plan].name:null)},[cfg.plan]);
@@ -2041,7 +2081,7 @@ function App(){
    ${dl&&html`<div className="rounded-2xl bg-neutral-200 text-black px-4 py-3 text-sm pop-in"><b>Semana de descarga</b> · día ${Math.min(7,daysSince(cfg.deload)+1)} de 7. Mitad de series, −10 % de peso y RPE 6–7.</div>`}
    <${NextCard} notes=${notes} cfg=${cfg} setSel=${k=>cloud.setCfg({pinSel:k})} open=${open}/>
    <h2 className="text-xl font-semibold px-1 pt-3">Tus rutinas</h2>
-   ${(allTags.includes('Rutina A')||allTags.includes('Rutina C')||allTags.includes('Antiguas'))&&html`<p className="text-xs mut px-1 -mt-1">${[allTags.includes('Rutina A')||allTags.includes('Rutina C')?'Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia».':'',allTags.includes('Antiguas')?'Tus rutinas de antes están en «Antiguas», con su historial.':''].filter(Boolean).join(' ')}</p>`}
+   ${(notes.some(n=>n.plan)||allTags.includes('Antiguas'))&&html`<p className="text-xs mut px-1 -mt-1">${[notes.some(n=>n.plan)?'Rutina A (4 días) y Rutina C (3 días, para épocas de muchos exámenes), del PDF «Rutina de hipertrofia».':'',allTags.includes('Antiguas')?'Tus rutinas de antes están en «Antiguas», con su historial.':''].filter(Boolean).join(' ')}</p>`}
    ${day&&html`<div className="flex items-center justify-between px-1 text-sm"><span className="mut">Rutinas del ${new Date(day).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</span><button onClick=${()=>setDay(null)} className="text-neutral-300 underline">Quitar filtro</button></div>`}
    <input value=${q} onChange=${e=>setQ(e.target.value)} placeholder="Buscar día o rutina" className="field w-full h-12 px-4"/>
    ${allTags.length>0&&html`<div className="flex gap-2 flex-wrap">
