@@ -479,6 +479,7 @@ let SEEDMAP={};
 const load=()=>{try{const r=localStorage.getItem(KEY);if(r){const v=JSON.parse(r);if(Array.isArray(v))return v}}catch(e){}if(window.claude)return[];const s=seed();SEEDMAP=Object.fromEntries(s.map(n=>[n.id,n.updated]));try{localStorage.setItem('gym-seed-ids',JSON.stringify(SEEDMAP))}catch(e){}return s};
 const N=v=>{const x=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(x)?x:0};
 const fN=x=>String(Math.round(x*100)/100).replace('.',',');
+const pl=(n,s,p)=>n+' '+(n===1?s:p||s+'s');
 const fmtK=n=>n>=1000?(n/1000).toFixed(1).replace('.',',')+'k':String(Math.round(n));
 const clone=n=>JSON.parse(JSON.stringify(n));
 const reid=b=>{b.id=uid();(b.sets||[]).forEach(s=>s.id=uid());(b.items||[]).forEach(s=>s.id=uid());return b};
@@ -510,8 +511,8 @@ function prog(t,cur,prev,as){
  if(cur.length>=t.s&&cur.every(x=>x[1]>=t.hi)){const nk=rnd(kg+t.inc);return{k:'up',kg:nk,from:kg,msg:'Sube a '+fN(nk)+' kg',why:'Llegaste a '+t.hi+' reps en todas las series ('+reps+')'}}
  const low=cur.some(x=>x[1]<t.lo);
  if(low&&prev&&prev.length&&prev.some(x=>x[1]<t.lo)&&Math.max(...prev.map(x=>x[0]))===kg&&toInc(kg*0.9,t.inc)<kg){const nk=toInc(kg*0.9,t.inc);return{k:'down',kg:nk,from:kg,msg:'Baja a '+fN(nk)+' kg',why:'Dos sesiones sin llegar a '+t.lo+' reps: baja un 10 % y vuelve a subir'}}
- if(low)return{k:'hold',kg,from:kg,msg:'Mantén '+fN(kg)+' kg',why:'Busca al menos '+t.lo+' reps en todas las series ('+reps+')'};
- return{k:'reps',kg,from:kg,msg:'Mantén '+fN(kg)+' kg y suma reps',why:'Cuando hagas '+t.hi+' en todas, toca subir ('+reps+')'};
+ if(low)return{k:'hold',kg,from:kg,msg:kg>0?'Mantén '+fN(kg)+' kg':'Sigue sin lastre',why:'Busca al menos '+t.lo+' reps en todas las series ('+reps+')'};
+ return{k:'reps',kg,from:kg,msg:kg>0?'Mantén '+fN(kg)+' kg y suma reps':'Sigue sin lastre y suma reps',why:'Cuando hagas '+t.hi+' en todas, toca subir ('+reps+')'};
 }
 /* Historial de un ejercicio dentro de una rutina, de más reciente a más antiguo */
 const histOf=(note,name)=>{const k=norm(name),h=note.hist||[],out=[];if(!k)return out;for(let i=h.length-1;i>=0;i--){if(h[i].dl)continue;const e=(h[i].ex||[]).find(x=>norm(x.n)===k);if(e)out.push({t:h[i].t,s:e.s,demo:h[i].demo})}return out};
@@ -772,7 +773,7 @@ function RoutineField({tags,all,need,onSave}){
  const save=x=>{const t=x.replace(/^#+/,'').trim();if(t===cur)return;onSave(t?[t,...tags.slice(1).filter(y=>y!==t)]:tags.slice(1))};
  const bad=!cur&&!v.trim();
  return html`<div className="space-y-2">
-  <label className="block text-xs mut px-1 uppercase" style=${{letterSpacing:'.08em'}}>Rutina</label>
+  <label className="block text-xs mut px-1" style=${{letterSpacing:'.08em',textTransform:'uppercase'}}>Rutina</label>
   <input value=${v} onChange=${e=>setV(e.target.value)} onBlur=${()=>save(v)} onKeyDown=${e=>e.key==='Enter'&&e.target.blur()} placeholder="Ej.: Rutina A" className="field w-full h-12 px-4" style=${bad&&need?{boxShadow:'inset 0 0 0 1.5px #ee4b55'}:null}/>
   ${!cur&&names.length>0&&html`<div className="flex gap-2 flex-wrap">${names.map(t=>html`<button key=${t} onClick=${()=>{setV(t);save(t)}} className="chip h-9 px-4 rounded-full text-sm text-neutral-200">${t}</button>`)}</div>`}
   ${bad&&html`<p className="text-xs px-1" style=${{color:need?'#ee4b55':'#a3a3a3'}}>${need?'Ponle nombre a la rutina antes de salir.':names.length?'Elige a qué rutina pertenece este día o escribe una nueva.':'Escribe el nombre de la rutina a la que pertenece este día.'}</p>`}
@@ -915,7 +916,7 @@ function ProgCard({notes,open,cfg,onStartDl,onEndDl}){
  const dl=cfg.deload,[cd,setCd]=useState(false),ready=[];let first=0;
  notes.forEach(n=>{(n.hist||[]).forEach(h=>{if(!h.demo&&(!first||h.t<first))first=h.t});if(dl)return;
   n.blocks.forEach(b=>{if(b.type!=='exercise'||!tgtOf(b))return;const h=histOf(n,b.name);if(!h.length)return;const p=prog(tgtOf(b),h[0].s,h[1]&&h[1].s,isAs(b.name));if(p&&p.k==='up'&&!isApplied(b,p))ready.push({id:n.id,day:n.title,name:b.name,p})})});
- const start=cfg.lastDeload||first,wk=start?Math.floor((Date.now()-start)/(7*864e5))+1:0,due=wk>=5,dd=dl?daysSince(dl)+1:0;
+ const start=cfg.lastDeload||first,wk=start?Math.floor((Date.now()-start)/(7*864e5))+1:0,due=wk>=6,dd=dl?daysSince(dl)+1:0;
  const ask=f=>{if(cd){setCd(false);f()}else{setCd(true);setTimeout(()=>setCd(false),3000)}};
  return html`<div className="card p-4">
   <div className="flex justify-between items-baseline text-sm mb-3"><span className="ch">Doble progresión</span></div>
@@ -946,10 +947,10 @@ function ProgCard({notes,open,cfg,onStartDl,onEndDl}){
 const pinTags=(notes,cfg)=>{const have=new Set(notes.flatMap(n=>n.tags||[]));return(Array.isArray(cfg.pins)?cfg.pins:['Rutina A','Rutina C']).filter(t=>have.has(t))};
 /* ===== Rangos por músculo (según el peso que levantas) ===== */
 const RANKS=[['Hierro','#8b9099'],['Bronce','#c27c48'],['Plata','#cfd6de'],['Oro','#f0b92b'],['Platino','#35c7c1'],['Diamante','#a67cf5'],['Ascendente','#3fc07c'],['Inmortal','#ee4b55'],['Radiante','#ffe9a3']];
-/* Referencias por ejercicio: [patrón, principiante, élite, material de la tabla] en 1RM ÷ peso corporal (hombre de 80 kg). Élite ≈ Radiante.
+/* Referencias por ejercicio: [patrón, principiante, élite, material de la tabla] en 1RM ÷ peso corporal (hombre de 80 kg). Élite = Inmortal 3.
    Material: 'bw' tu cuerpo (cuenta tu peso más el lastre), 'bb' barra, 'db' peso de una mancuerna, 'mq' máquina, 'po' polea, 'x' sin convertir; con 'u' = a una pierna o un brazo. */
 const STD=[
- [/dominada|pull up|pullup|chin/,1,2,'bw'],[/fondos? (en |de )?banco|bench dip|fondos? de triceps/,1.3,2.8,'bw'],[/fondo|dip/,1,2.1,'bw'],
+ [/dominada|pull up|pullup|\bchin/,1,2,'bw'],[/fondos? (en |de )?banco|bench dip|fondos? de triceps/,1.3,2.8,'bw'],[/fondo|dip/,1,2.1,'bw'],
  [/abdominal|crunch|plancha|elevaci\w* de piernas|rueda/,.3,1.5,'x'],
  [/peso muerto rumano|rumano|rdl|buenos dias|good morning/,.75,2.6,'bb'],[/peso muerto|deadlift/,1,3,'bb'],
  [/hip thrust|puente de gluteo/,1,3.5,'bb'],[/jaca|hack/,.75,3.2,'mq'],[/sentadilla bulgara|bulgara|zancada|lunge|split/,.3,1.6,'bbu'],[/sentadilla|squat/,.75,2.75,'bb'],
@@ -976,7 +977,7 @@ const EQ=[['bb','Barra'],['db','Mancuernas'],['mq','Máquina'],['po','Polea'],['
    Goblet y kettlebell: una sola pesa a dos manos, cuenta como peso total */
 const EQ_RULES=[
  ['bw',/asistid|remo invertido|australiana/],['bb',/goblet|kettlebell|pesa rusa/],['db',/mancuerna|dumbbell|\bdb\b/],['po',/polea|cable|\bcuerda\b|crossover/],
- ['mq',/maquina|smith|multipower|hammer strength|\bpalanca\b/],['bb',/\bbarra\b|\bez\b|\bz\b|barbell/],
+ ['mq',/maquina|machine|smith|multipower|hammer strength|\bpalanca\b/],['bb',/\bbarra\b|\bez\b|\bz\b|barbell/],
  ['bw',/dominada|pull ?up|chin ?up|fondo|\bdips?\b|flexion|push ?up|muscle ?up|lastrad/],
  ['po',/cruce|jalon|pulldown|pushdown|face ?pull|gironda|remo bajo|remo sentado|pull ?through|crunch en/],
  ['mq',/prensa|leg press|jaca|hack|pec ?deck|contractor|cuadriceps|leg extension|femoral|leg curl|gemelo|calf|talon|chest press|press de pecho|press pecho|aductor|abductor|aduccion|abduccion/],
@@ -1004,7 +1005,7 @@ const rbestsOf=(notes,cfg,bw,extra)=>{const em=eqMapOf(notes),out={},put=(k,v)=>
  Object.entries(old).forEach(([k,e])=>{if(!out[k])put(k,eqOf(k,em).eq==='bw'?e+bw*1.25:e)});
  return{b:out,em}};
 /* Nota (0–1) de un ejercicio: 0 = por debajo de principiante, 1 = élite */
-/* Misma escala en todos los ejercicios: principiante ≈ Hierro 3, novato ≈ Plata, intermedio ≈ Oro, avanzado ≈ Diamante, élite = Radiante */
+/* Misma escala en todos los ejercicios: principiante ≈ Hierro 3, novato ≈ Plata, intermedio ≈ Oro, avanzado ≈ Diamante, élite = Inmortal 3 */
 /* Élite (el nivel de las tablas) queda en Inmortal 3; Radiante pide pasar de élite, como un culturista o powerlifter de competición: casi nadie llega */
 const LVL=[[0,.08],[1/6,.22],[1/3,.40],[2/3,.66],[1,.92],[1.15,.96],[1.4,1]];
 const exScore=(k,v,bw,q,sex)=>{const sd=stdOf(k,isBig(k)),press=/press|bench|banca|inclinado|militar|arnold/.test(k),bwq=q.eq==='bw';
@@ -1073,7 +1074,7 @@ function RanksCard({notes,cfg,meas,setCfg}){
      ${bar(r.step>=24?100:Math.round(r.frac*100),5,RANKS[r.tier][1])}
     </div></div>`)}
    ${setCfg&&html`<div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}><span className="text-sm">Comparar con</span><div className="chip flex rounded-full p-0.5">${[['m','Hombres'],['f','Mujeres']].map(([k,l])=>html`<button key=${k} onClick=${()=>setCfg({sex:k})} className=${'h-8 px-3 rounded-full text-xs '+((cfg.sex==='f'?'f':'m')===k?'bg-neutral-200 text-black font-semibold':'mut')}>${l}</button>`)}</div></div>`}
-   <p className="text-xs mut" style=${{margin:0}}>Cada músculo sale de la media de sus dos mejores ejercicios. Tu máximo se estima con series de hasta 12 repeticiones, se pasa a su equivalente con barra según el material (mancuernas, a un brazo o una pierna…) y se compara con lo que levanta un principiante y uno de élite de tu peso, con la fórmula DOTS. En dominadas y fondos cuenta tu peso más el lastre. Las máquinas y poleas dan como mucho Platino, porque cada una pesa distinto: si un músculo sale solo de ellas pone «aproximado». El material de cada ejercicio se cambia en su apartado «Músculos». Radiante equivale a nivel élite.${bwR?'':' Ahora se calcula con 75 kg: añade tu peso en Medidas para afinarlo.'}</p>
+   <p className="text-xs mut" style=${{margin:0}}>Cada músculo sale de la media de sus dos mejores ejercicios. Tu máximo se estima con series de hasta 12 repeticiones, se pasa a su equivalente con barra según el material (mancuernas, a un brazo o una pierna…) y se compara con lo que levanta un principiante y uno de élite de tu peso, con la fórmula DOTS. En dominadas y fondos cuenta tu peso más el lastre. Las máquinas y poleas dan como mucho Platino, porque cada una pesa distinto: si un músculo sale solo de ellas pone «aproximado». El material de cada ejercicio se cambia en su apartado «Músculos». El nivel élite equivale a Inmortal 3; Radiante es para quien pasa de ahí, a nivel de competición.${bwR?'':' Ahora se calcula con 75 kg: añade tu peso en Medidas para afinarlo.'}</p>
   </div>`}
  </div>`;
 }
@@ -1144,22 +1145,26 @@ function RankMap({notes,cfg,meas}){
 }
 /* ===== Historial por ejercicio ===== */
 const EXM=[['kg','Peso máx.','kg'],['e1','1RM est.','kg'],['vol','Volumen','kg']];
+/* Sin lastre se miran las repeticiones; en las asistidas, la ayuda (cuanta menos, mejor) */
+const EXR=[['rm','Mejor serie','reps'],['tr','Reps totales','reps']];
+const EXA=[['kg','Ayuda','kg'],['rm','Mejor serie','reps'],['tr','Reps totales','reps']];
 function exHistory(notes){
- const m={};
- notes.forEach(n=>(n.hist||[]).forEach(h=>{if(h.demo||h.dl)return;(h.ex||[]).forEach(e=>{const k=norm(e.n),s=(e.s||[]).filter(x=>x[0]>0&&x[1]>0);if(!k||!s.length)return;
-  const top=s.reduce((a,x)=>x[0]>a[0]||(x[0]===a[0]&&x[1]>a[1])?x:a,s[0]);
-  (m[k]=m[k]||{k,name:e.n,pts:[]}).pts.push({t:h.t,kg:top[0],r:top[1],e1:Math.round(Math.max(...s.map(x=>e1(x[0],x[1])))*10)/10,vol:Math.round(s.reduce((a,x)=>a+x[0]*x[1],0)),s})})}));
- return Object.values(m).map(x=>{x.pts.sort((a,b)=>a.t-b.t);x.name=x.pts.length?x.name:x.name;return x}).sort((a,b)=>b.pts.length-a.pts.length||a.name.localeCompare(b.name));
+ const m={},em=eqMapOf(notes);
+ notes.forEach(n=>(n.hist||[]).forEach(h=>{if(h.demo||h.dl)return;(h.ex||[]).forEach(e=>{const k=norm(e.n),as=isAs(e.n),bw=eqOf(k,em).eq==='bw',s=(e.s||[]).filter(x=>(x[0]>0||bw||as)&&x[1]>0);if(!k||!s.length)return;
+  const top=s.reduce((a,x)=>(as?x[0]<a[0]:x[0]>a[0])||(x[0]===a[0]&&x[1]>a[1])?x:a,s[0]);
+  (m[k]=m[k]||{k,name:e.n,as,pts:[]}).pts.push({t:h.t,kg:top[0],r:top[1],e1:Math.round(Math.max(...s.map(x=>e1(x[0],x[1])))*10)/10,vol:Math.round(s.reduce((a,x)=>a+x[0]*x[1],0)),rm:Math.max(...s.map(x=>x[1])),tr:s.reduce((a,x)=>a+x[1],0),s})})}));
+ return Object.values(m).map(x=>{x.pts.sort((a,b)=>a.t-b.t);x.noKg=x.pts.every(p=>p.kg===0);return x}).sort((a,b)=>b.pts.length-a.pts.length||a.name.localeCompare(b.name));
 }
 function ExerciseChart({notes}){
  const all=exHistory(notes);
  const [key,setKey]=useState(()=>{try{return localStorage.getItem('gym-exchart')||''}catch(e){return''}});
- const [met,setMet]=useState('kg'),[hi,setHi]=useState(null);
+ const [met0,setMet]=useState('kg'),[hi,setHi]=useState(null);
  const ex=all.find(x=>x.k===key)||all[0];
  const pick=k=>{setKey(k);setHi(null);try{localStorage.setItem('gym-exchart',k)}catch(e){}};
  const head=html`<div className="flex justify-between items-baseline text-sm mb-3"><span className="ch">Historial por ejercicio</span>${ex&&html`<span className="mut num">${ex.pts.length} ${ex.pts.length===1?'sesión':'sesiones'}</span>`}</div>`;
  if(!ex)return html`<div className="card p-4">${head}<p className="text-sm mut" style=${{margin:0}}>Cuando termines entrenos con peso y repeticiones, aquí podrás ver cómo evoluciona cada ejercicio.</p></div>`;
- const pts=ex.pts,val=x=>x[met],unit=EXM.find(x=>x[0]===met)[2];
+ const MS=ex.as?EXA:ex.noKg?EXR:EXM,met=MS.some(x=>x[0]===met0)?met0:MS[0][0],less=ex.as&&met==='kg';
+ const pts=ex.pts,val=x=>x[met],unit=MS.find(x=>x[0]===met)[2];
  const fmt=v=>met==='vol'?fmtK(v):fN(v);
  const W=320,H=150,L=36,R=12,T=14,B=24;
  const vs=pts.map(val),lo0=Math.min(...vs),hi0=Math.max(...vs),pad=(hi0-lo0)*.15||Math.max(1,hi0*.1);
@@ -1170,7 +1175,7 @@ function ExerciseChart({notes}){
  const ticks=[];for(let v=y0;v<=y1+1e-9;v+=step)ticks.push(Math.round(v*100)/100);
  const line=pts.map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y(val(p)).toFixed(1)).join(' ');
  const area=line+' L'+X(t1).toFixed(1)+' '+(H-B)+' L'+X(t0).toFixed(1)+' '+(H-B)+' Z';
- const best=Math.max(...vs),last=vs[vs.length-1],first=vs[0],diff=last-first;
+ const best=less?Math.min(...vs):Math.max(...vs),last=vs[vs.length-1],first=vs[0],diff=last-first,good=less?-diff:diff;
  const fd=t=>new Date(t).toLocaleDateString('es-ES',{day:'numeric',month:'short'}).replace('.','');
  const sel=hi!=null?pts[hi]:null;
  const near=e=>{const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*W;let bi=0,bd=1e9;pts.forEach((p,i)=>{const d=Math.abs(X(p.t)-x);if(d<bd){bd=d;bi=i}});setHi(bi)};
@@ -1180,9 +1185,9 @@ function ExerciseChart({notes}){
   <select aria-label="Ejercicio" value=${ex.k} onChange=${e=>pick(e.target.value)} className="field w-full" style=${{height:42,padding:'0 12px',fontWeight:600,appearance:'auto'}}>
    ${all.map(x=>html`<option key=${x.k} value=${x.k}>${x.name.charAt(0).toUpperCase()+x.name.slice(1)}</option>`)}
   </select>
-  <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginTop:10}}>${EXM.map(([k,l])=>html`<button key=${k} onClick=${()=>{setMet(k);setHi(null)}} style=${{height:34,borderRadius:10,fontSize:13,fontWeight:600,background:met===k?'#e5e5e5':'rgba(255,255,255,.07)',color:met===k?'#000':'#d4d4d4'}}>${l}</button>`)}</div>
+  <div style=${{display:'grid',gridTemplateColumns:'repeat('+MS.length+',1fr)',gap:6,marginTop:10}}>${MS.map(([k,l])=>html`<button key=${k} onClick=${()=>{setMet(k);setHi(null)}} style=${{height:34,borderRadius:10,fontSize:13,fontWeight:600,background:met===k?'#e5e5e5':'rgba(255,255,255,.07)',color:met===k?'#000':'#d4d4d4'}}>${l}</button>`)}</div>
   <div style=${{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginTop:14}}>
-   ${Stat('Última',fmt(last)+' '+unit)}${Stat('Mejor',fmt(best)+' '+unit)}${Stat('Desde el inicio',pts.length>1?(diff>0?'+':diff<0?'−':'')+fmt(Math.abs(diff))+' '+unit:'—',pts.length>1?(diff>0?'#C6F432':diff<0?'#f08a8a':null):null)}
+   ${Stat('Última',fmt(last)+' '+unit)}${Stat('Mejor',fmt(best)+' '+unit)}${Stat('Desde el inicio',pts.length>1?(diff>0?'+':diff<0?'−':'')+fmt(Math.abs(diff))+' '+unit:'—',pts.length>1?(good>0?'#C6F432':good<0?'#f08a8a':null):null)}
   </div>
   <div style=${{position:'relative',marginTop:10}}>
    <svg viewBox=${'0 0 '+W+' '+H} style=${{width:'100%',display:'block',touchAction:'pan-y'}} role="img" aria-label=${'Evolución de '+ex.name+' por sesión'} onPointerMove=${near} onPointerDown=${near} onPointerLeave=${e=>{if(e.pointerType==='mouse')setHi(null)}}>
@@ -1243,7 +1248,7 @@ function pushMsg(notes,cfg){
  const exs=nx.blocks.filter(b=>b.type==='exercise'&&b.name);
  const pick=[...exs.filter(b=>isBig(b.name)),...exs].map(b=>({b,h:histOf(nx,b.name).find(x=>!x.demo)})).find(x=>x.h&&x.h.s&&x.h.s.length);
  if(pick){const top=pick.h.s.reduce((m,x)=>x[0]>m[0]||(x[0]===m[0]&&x[1]>m[1])?x:m,pick.h.s[0]);parts.push('La última vez, '+pick.b.name.toLowerCase()+' con '+fN(top[0])+' kg × '+top[1]+(cfg.deload?'. Hoy, más suave.':'. Toca superarlo.'))}
- else parts.push(exs.length?exs.length+' ejercicios te esperan.':'Tu sesión te espera.');
+ else parts.push(exs.length>1?exs.length+' ejercicios te esperan.':exs.length?'1 ejercicio te espera.':'Tu sesión te espera.');
  const st=streakOf(ds),left=Math.max(0,st.target-st.cur);
  if(st.n>0)parts.push('Llevas '+st.n+(st.n===1?' semana seguida':' semanas seguidas')+(left>0?': te '+(left===1?'queda 1 sesión':'quedan '+left+' sesiones')+' para no perderla.':'. Semana completa.'));
  else if(left>0)parts.push('Te '+(left===1?'queda 1 sesión':'quedan '+left+' sesiones')+' para cerrar la semana y empezar racha.');
@@ -1435,7 +1440,7 @@ function NextCard({notes,cfg,setSel,open}){
   <div className="flex items-center justify-between gap-2 mb-3"><span className="text-sm mut">${cur?'En curso':'Hoy toca'}</span>
    <div className="chip flex flex-wrap rounded-full p-0.5">${pins.map(k=>html`<button key=${k} onClick=${()=>setSel(k)} className=${'h-8 px-3 rounded-full text-xs '+(tag===k?'bg-neutral-200 text-black font-semibold':'mut')}>${short(k)} · ${cnt(k)}</button>`)}</div></div>
   ${nx?html`<div className="pop-in" key=${nx.id}><div className="text-2xl font-bold leading-tight">${nx.title||'Sin título'}</div>
-   <div className="hoy-meta"><span>${nEx} ejercicios${lt?', último entreno '+ago(lt):''}</span><span><b>${ix+1}</b> de ${ds.length}</span></div>
+   <div className="hoy-meta"><span>${pl(nEx,'ejercicio')}${lt?', último entreno '+ago(lt):''}</span><span><b>${ix+1}</b> de ${ds.length}</span></div>
    <div className="flex gap-1.5 mt-3">${ds.map(n=>html`<span key=${n.id} className=${'h-1.5 flex-1 rounded-full '+(n.id===nx.id?'bg-neutral-200':'bg-[#262626]')}></span>`)}</div>
    ${(()=>{const st=streakOf(ds),left=Math.max(0,st.target-st.cur),on=st.n>0||st.cur>0;return html`<div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginTop:14}}>
     <div style=${{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
@@ -1526,6 +1531,8 @@ const SHAKES={
  '2':{name:'Volumen',kcal:770,it:{...BASE,milk:'300 ml entera',oats:'70 g',pb:'1 cucharada sopera (15 g)'},ch:['Avena: 45 g → 70 g (más hidratos)','Leche semidesnatada → entera (más grasa)','Crema de cacahuete: 1 cucharadita → 1 cucharada sopera (más grasa)']}};
 const clampL=x=>Math.max(-2,Math.min(2,Math.round(x||0)));
 const shakeOf=ms=>ms.length?clampL(ms[ms.length-1].shake):0;
+/* Cuándo cambió el batido por última vez: tras un cambio hay que esperar para ver qué efecto tiene */
+const shakeMoved=ms=>{for(let i=ms.length-1;i>0;i--)if(clampL(ms[i].shake)!==clampL(ms[i-1].shake))return ms[i].t;return 0};
 function LegacyShake({level,prev,onSet}){
  const s=SHAKES[String(level)],moved=prev!=null&&prev!==level;
  return html`<div className="field p-3">
@@ -1598,7 +1605,7 @@ function RecipeSheet({cfg,setCfg,close}){
  const fld='field h-11 px-3 text-sm';
  return html`<${Sheet} title="Tu batido" close=${close}>${shut=>html`<div className="space-y-3">
   <p className="text-sm mut">Pon tu batido de siempre. Según tus medidas, la app lo subirá o bajará de calorías tocando los hidratos y la grasa. La proteína y la creatina no cambian.</p>
-  ${rows.map(r=>html`<div key=${r.k} className="field p-2 space-y-2">
+  ${rows.map(r=>html`<div key=${r.k} className="field space-y-2" style=${{padding:8}}>
    <div className="flex gap-2 items-center">
     <select value=${r.id} onChange=${e=>set(r.k,{id:e.target.value})} className=${fld+' bg-transparent'} style=${{flex:'1 1 0',minWidth:0}}>${SI_ORDER.map(id=>html`<option key=${id} value=${id}>${SI[id][0]}</option>`)}</select>
     ${r.id!=='other'&&SI[r.id][1]!=='al gusto'&&html`<input value=${r.q} onChange=${e=>set(r.k,{q:e.target.value})} inputMode="decimal" className=${fld+' text-right num'} style=${{width:64,flex:'none'}}/><span className="text-xs mut" style=${{width:30,flex:'none'}}>${SI[r.id][1]==='unidad'?'ud.':SI[r.id][1]==='cucharadita'?'cdta.':SI[r.id][1]}</span>`}
@@ -1646,7 +1653,7 @@ function ShakeBox({level,prev,onSet,cfg,setCfg}){
   <div className="mt-2 pt-2 border-t border-white/5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
    ${adj.filter(a=>!(a.added&&a.q<=0)).map(a=>{const b=base[a.i],diff=a.added||a.id!==b.id||a.q!==N(b.q),gone=!a.added&&a.q<=0&&SI[a.id]&&SI[a.id][1]!=='al gusto'&&a.id!=='other',c=gone?'mut line-through':diff?'text-white font-medium':'text-neutral-400';return html`<${React.Fragment} key=${a.i}><span className=${c}>${siName(a)}</span><span className=${'text-right num '+c}>${gone?siQty(b):siQty(a)}</span><//>`})}
   </div>
-  <div className="flex items-center justify-between mt-2"><p className="text-[11px] mut">La proteína y la creatina no cambian. Calorías aproximadas.</p>${setCfg&&html`<button onClick=${()=>setEd(true)} className="text-xs mut underline shrink-0 ml-2">Editar receta</button>`}</div>${sheet}
+  <div className="flex items-center justify-between mt-2"><p className="text-[11px] mut">La proteína y la creatina no cambian. Calorías aproximadas.</p>${setCfg&&html`<button onClick=${()=>setEd(true)} className="text-xs mut underline shrink-0" style=${{marginLeft:8}}>Editar receta</button>`}</div>${sheet}
  </div>`;
 }
 const tipNoShake=t=>t.replace(/^Baja el batido un paso: unas 100 kcal menos al día\./,'Come unas 100–120 kcal menos al día.').replace(/^Baja el batido un paso y/,'Come unas 100–120 kcal menos al día y').replace(/^Sigue comiendo igual y mantén el batido\./,'Sigue comiendo igual.').replace(/^Mantén el batido\. Si quieres crecer más rápido, súbelo un paso\./,'Sigue comiendo igual. Si quieres crecer más rápido, come unas 120 kcal más al día.').replace(/^Sube el batido un paso: unas/,'Come unas').replace(/^Sube el batido dos pasos: unas 200 kcal/,'Come unas 200–250 kcal');
@@ -1706,8 +1713,8 @@ function MeasureNew({ms,cloud,close}){
  const last=ms[ms.length-1];
  const [v,setV]=useState({}),[help,setHelp]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState(null),[done,setDone]=useState(null);
  const vals=Object.fromEntries(Object.entries(v).map(([k,x])=>[k,N(x)]).filter(([k,x])=>x>0));
- const save=async()=>{setErr(null);setBusy(true);try{const e={kind:'measure',id:uid(),t:Date.now(),...vals},pl=shakeOf(ms);e.shake=clampL(pl+(advice([...ms,e]).d||0));await cloud.saveMeasure(e);setDone({all:[...ms,e],prev:pl})}catch(x){setErr(x&&x.code==='nocloud'?'Para guardar medidas tienes que abrir la app con tu cuenta de Claude.':'No se ha podido guardar. Prueba otra vez.')}finally{setBusy(false)}};
- return html`<${Sheet} title="Medirme" close=${close}>${shut=>done?html`<div className="space-y-4"><${AdviceBox} a=${advice(done.all)} off=${shakeMode(cloud.cfg)==='off'}/><${ShakeBox} level=${shakeOf(done.all)} prev=${done.prev} cfg=${cloud.cfg}/><button onClick=${shut} className="btn-w h-14 w-full">Listo</button></div>`
+ const save=async()=>{setErr(null);setBusy(true);try{const e={kind:'measure',id:uid(),t:Date.now(),...vals},pl=shakeOf(ms),want=advice([...ms,e]).d||0,mv=shakeMoved(ms),hold=!!want&&!!mv&&daysSince(mv)<ME_MIN;e.shake=clampL(pl+(hold?0:want));await cloud.saveMeasure(e);setDone({all:[...ms,e],prev:pl,hold})}catch(x){setErr(x&&x.code==='nocloud'?'Para guardar medidas tienes que abrir la app con tu cuenta de Claude.':'No se ha podido guardar. Prueba otra vez.')}finally{setBusy(false)}};
+ return html`<${Sheet} title="Medirme" close=${close}>${shut=>done?html`<div className="space-y-4"><${AdviceBox} a=${advice(done.all)} off=${shakeMode(cloud.cfg)==='off'}/>${done.hold&&html`<p className="text-sm text-neutral-300">Hace poco que cambiaste las calorías: de momento no las toco. Espera a ver el efecto y mídete dentro de unos días.</p>`}<${ShakeBox} level=${shakeOf(done.all)} prev=${done.prev} cfg=${cloud.cfg}/><button onClick=${shut} className="btn-w h-14 w-full">Listo</button></div>`
   :html`<div className="space-y-3">
    <p className="text-sm mut">Mídete siempre igual: por la mañana, en ayunas y antes de entrenar. Con peso y cintura basta; el resto es opcional.</p>
    ${MEAS.map(([k,l,u,how,rec])=>html`<div key=${k} className="chip rounded-2xl p-3">
@@ -2041,7 +2048,7 @@ function App(){
   s.dx=Math.max(0,dx);el.style.transition='none';el.style.transform='translateX('+s.dx+'px)';el.style.boxShadow='-14px 0 30px rgba(0,0,0,.7)'};
  const tEnd=()=>{const s=sw.current,el=wrap.current;sw.current=null;if(!s||!s.on||!el)return;const w=window.innerWidth,v=s.dx/Math.max(1,Date.now()-s.t);
   el.style.transition='transform .28s cubic-bezier(.32,.72,0,1)';
-  if(s.dx>w*0.33||(v>0.5&&s.dx>40)){if(hasDone(note)){el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300);setAsk(true)}else{el.style.transform='translateX('+w+'px)';setTimeout(leaveNow,250)}}
+  if(s.dx>w*0.33||(v>0.5&&s.dx>40)){if(hasDone(note)||(note&&!isEmpty(note)&&!(note.tags||[]).length)){el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300);leave()}else{el.style.transform='translateX('+w+'px)';setTimeout(leaveNow,250)}}
   else{el.style.transform='';setTimeout(()=>{if(wrap.current){wrap.current.style.transition='';wrap.current.style.boxShadow=''}},300)}};
  const create=()=>{const n={id:uid(),title:'',tags:[],created:Date.now(),updated:Date.now(),blocks:[]};setNotes(ns=>[n,...ns]);open(n.id)};
  const dup=()=>{const c=clear(clone(note));delete c.hist;delete c.plan;delete c.day;delete c.ord;c.id=uid();c.created=Date.now();c.title=(note.title||'Rutina')+' (copia)';c.tags=(c.tags||[]).filter(t=>!t.startsWith('Rutina '));c.updated=Date.now();c.blocks.forEach(reid);setNotes(ns=>[c,...ns]);open(c.id)};
@@ -2051,7 +2058,7 @@ function App(){
  /* Copia de seguridad */
  const doExport=async()=>{setBmsg(null);const r=await exportData({app:'pesos-gym',v:2,t:Date.now(),notes,meas:cloud.meas,cfg:{...cfg}});if(r==='ok'){cloud.setCfg({lastExport:Date.now()});setBmsg('Copia exportada. Guárdala en Archivos o en iCloud.')}else setBmsg(r==='declined'?'No se ha guardado la copia.':'No se ha podido exportar. Prueba otra vez.')};
  const pickFile=e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);if(!d||d.app!=='pesos-gym'||!Array.isArray(d.notes))throw 0;setImp({notes:d.notes.filter(n=>n&&n.id&&Array.isArray(n.blocks)),meas:Array.isArray(d.meas)?d.meas.filter(m=>m&&m.id&&m.t):[],cfg:d.cfg&&typeof d.cfg==='object'?d.cfg:{},t:d.t||0})}catch(x){setBmsg('Ese archivo no es una copia de Prograd.')}};rd.onerror=()=>setBmsg('No se ha podido leer el archivo.');rd.readAsText(f)};
- const doImport=async d=>{setImp(null);try{await cloud.replaceAll(d);setAid(null);setBmsg('Copia importada: '+d.notes.length+' rutinas y '+d.meas.length+' medidas.')}catch(e){setBmsg('No se ha podido importar del todo. Prueba otra vez.')}};
+ const doImport=async d=>{setImp(null);try{await cloud.replaceAll(d);setAid(null);setBmsg('Copia importada: '+pl(d.notes.length,'rutina')+' y '+pl(d.meas.length,'medida')+'.')}catch(e){setBmsg('No se ha podido importar del todo. Prueba otra vez.')}};
  const allTags=[...new Set(notes.flatMap(n=>n.tags))].sort((a,b)=>(a.startsWith('Rutina ')?0:1)-(b.startsWith('Rutina ')?0:1)||a.localeCompare(b));
  const ft=tag&&allTags.includes(tag)?tag:null;
  const pinned=pinTags(notes,cfg);
@@ -2061,7 +2068,7 @@ function App(){
  const shown=ft?[...shown0].sort((a,b)=>dayKey(a)-dayKey(b)):shown0;
  const tagList=ft?notes.filter(n=>(n.tags||[]).includes(ft)).sort((a,b)=>dayKey(a)-dayKey(b)):[];
  const moveDay=(id,d)=>{const arr=tagList.map(n=>n.id),i=arr.indexOf(id),j=i+d;if(i<0||j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];const o=new Map(arr.map((x,k)=>[x,k]));setNotes(ns=>ns.map(n=>o.has(n.id)?{...n,ord:o.get(n.id)}:n))};
- const info=n=>{const e=n.blocks.filter(b=>b.type==='exercise').length,s=n.blocks.flatMap(b=>b.sets||[]);return e?`${e} ejercicios, ${s.length} series`:`${n.blocks.length} bloques`};
+ const info=n=>{const e=n.blocks.filter(b=>b.type==='exercise').length,s=n.blocks.flatMap(b=>b.sets||[]);return e?`${pl(e,'ejercicio')}, ${pl(s.length,'serie')}`:pl(n.blocks.length,'bloque')};
  const histTxt=n=>{const h=(n.hist||[]).filter(x=>!x.demo);return h.length?`Última vez ${ago(h[h.length-1].t)}, ${h.length} ${h.length===1?'sesión':'sesiones'}`:null};
  const inProg=n=>{const s=n.blocks.flatMap(b=>b.sets||[]),d=s.filter(x=>x.done).length;return d?`${d}/${s.length}`:null};
  const today=day0(Date.now());
@@ -2139,7 +2146,7 @@ function App(){
   ${ph==='new'&&html`<${MeasureNew} ms=${cloud.meas} cloud=${cloud} close=${()=>setPh(null)}/>`}
   ${ph==='hist'&&html`<${MeasureHist} ms=${cloud.meas} cloud=${cloud} close=${()=>setPh(null)}/>`}
   ${imp&&html`<${Sheet} title="Importar copia" close=${()=>setImp(null)}>${shut=>html`<div className="space-y-3">
-   <p className="text-sm text-neutral-300">Copia ${imp.t?'del '+fecha(imp.t)+' ('+ago(imp.t)+')':'sin fecha'}: ${imp.notes.length} rutinas y ${imp.meas.length} medidas.</p>
+   <p className="text-sm text-neutral-300">Copia ${imp.t?'del '+fecha(imp.t)+' ('+ago(imp.t)+')':'sin fecha'}: ${pl(imp.notes.length,'rutina')} y ${pl(imp.meas.length,'medida')}.</p>
    <div className="rounded-2xl bg-neutral-200 text-black px-3 py-2.5 text-sm"><b>Ojo:</b> se reemplazan todos los datos que hay ahora en la app por los de la copia.</div>
    <button onClick=${()=>doImport(imp)} className="btn-w h-14 w-full">Reemplazar mis datos</button>
    <button onClick=${shut} className="h-11 w-full mut">Cancelar</button></div>`}<//>`}

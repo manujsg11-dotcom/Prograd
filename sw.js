@@ -21,7 +21,8 @@ self.addEventListener('fetch', e => {
     e.respondWith(caches.match('index.html').then(cached => {
       if (!cached) return net;
       const slow = new Promise(res => setTimeout(() => res(cached), 3000));
-      return Promise.race([net, slow]).catch(() => cached);
+      // Si GitHub responde con un error, también se abre la copia guardada
+      return Promise.race([net.then(r => { if (!r.ok) throw new Error('error ' + r.status); return r; }), slow]).catch(() => cached);
     }));
   } else {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return r; })));
