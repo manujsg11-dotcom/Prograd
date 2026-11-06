@@ -484,6 +484,12 @@ const fmtK=n=>n>=1000?(n/1000).toFixed(1).replace('.',',')+'k':String(Math.round
 const clone=n=>JSON.parse(JSON.stringify(n));
 const reid=b=>{b.id=uid();(b.sets||[]).forEach(s=>s.id=uid());(b.items||[]).forEach(s=>s.id=uid());return b};
 const clear=n=>{n.blocks.forEach(b=>{(b.sets||[]).forEach(s=>s.done=false);(b.items||[]).forEach(s=>s.done=false)});return n};
+/* Contador del entreno: de la primera a la última serie marcada. Si entre dos series pasan más de 3 h son entrenos distintos (series olvidadas de otro día) y solo cuenta el último */
+const T_MAX=3*36e5;
+const spanOf=n=>{const t=n.blocks.flatMap(b=>b.type==='exercise'?b.sets||[]:[]).filter(s=>s.done&&s.doneAt).map(s=>s.doneAt).sort((x,y)=>x-y);if(!t.length)return null;let i=t.length-1;while(i>0&&t[i]-t[i-1]<=T_MAX)i--;return{a:t[i],b:t[t.length-1]}};
+const fmtClock=ms=>{const s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s/60)%60,p=x=>String(x).padStart(2,'0');return(h?h+':'+p(m):m)+':'+p(s%60)};
+const fmtDur=ms=>{const m=Math.round(ms/6e4),h=Math.floor(m/60);return h?h+' h '+String(m%60).padStart(2,'0'):m+' min'};
+const fmtHora=t=>new Date(t).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
 const day0=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
 const ago=t=>{const d=Math.round((day0(Date.now())-day0(t))/864e5);return d<=0?'hoy':d===1?'ayer':'hace '+d+' días'};
 const isEmpty=n=>!n.blocks.length&&!(n.hist&&n.hist.length)&&(!(n.title||'').trim()||n.title==='Nueva sesión');
@@ -812,7 +818,8 @@ const e1=(kg,r)=>kg*(1+r/30);
 const finishNote=(n,dl)=>{
  const a=analyse(n),m={},plan=dl?[]:planOf(n);Object.keys(a.vol).forEach(g=>m[g]={s:a.ms[g],v:Math.round(a.vol[g])});
  const best={...(n.best||{})};a.ex.forEach(e=>{const k=norm(e.n);if(!k)return;const b=Math.max(...e.s.map(x=>e1(x[0],x[1])));if(b>0)best[k]=Math.max(best[k]||0,Math.round(b*10)/10)});
- const hist=a.nS?[...(n.hist||[]),{t:Date.now(),sets:a.nS,vol:Math.round(a.tot),ex:a.ex,m,st:a.st,...(dl?{dl:1}:{})}].slice(-60):(n.hist||[]);
+ const sp=spanOf(n);
+ const hist=a.nS?[...(n.hist||[]),{t:Date.now(),sets:a.nS,vol:Math.round(a.tot),ex:a.ex,m,st:a.st,...(dl?{dl:1}:{}),...(sp&&sp.b>sp.a?{t0:sp.a,dur:sp.b-sp.a}:{})}].slice(-60):(n.hist||[]);
  const out=clear({...clone(n),hist,best});
  out.blocks=out.blocks.map(b=>{const pl=plan.find(x=>x.id===b.id);if(!pl)return b;return{...b,sets:fitSets(b,pl.p.kg)}});
  return out;
@@ -846,6 +853,7 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
  const rb=rankF(all,cfg,meas).mf,ra=rankF(all,cfg,meas,a.ex).mf;
  const rgains=Object.keys(a.ms).filter(g=>MUS[g]&&g!=='other'&&ra[g]!=null).map(g=>{const r0=stepOf(rb[g]||0),r1=stepOf(ra[g]);return{g,r0,r1,up:r1.step>r0.step}});
  const rups=rgains.filter(x=>x.up).length;
+ const sp=spanOf(note),du=sp?sp.b-sp.a:0;
  const T2=(v,l)=>html`<div className="chip rounded-2xl p-3 text-center"><div className="text-2xl font-semibold num">${v}</div><div className="text-xs mut">${l}</div></div>`;
  const ic={up:P.arrU,down:P.arrD,reps:P.plus,hold:P.eq};
  /* Fuera del editor para que cubra toda la pantalla */
@@ -854,6 +862,7 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
    <div className="flex items-center justify-between mb-4"><h2 className="text-2xl font-semibold">Resumen</h2><${RB} ic="x" label="Cerrar" onClick=${()=>shut()}/></div>
    ${!a.nS?html`<p className="mut">Aún no hay series completadas con peso y repeticiones. Marca algunas y vuelve.</p>`:html`<div className="space-y-5">
     <div className="grid grid-cols-3 gap-2">${T2(a.nS,'series')}${dl?T2(fmtK(a.tot),'kg totales'):T2(ups,'para subir')}${T2(prs.length,'récords')}</div>
+    ${du>=6e4&&html`<div className="field px-3 py-2.5 text-sm flex items-center justify-between"><b>Duración</b><span className="num"><b style=${{color:'#C6F432'}}>${fmtDur(du)}</b><span className="mut"> · ${fmtHora(sp.a)} – ${fmtHora(sp.b)}</span></span></div>`}
     ${rgains.length>0&&html`<div className="field p-3">
      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}><b>Rangos</b><span style=${{color:rups?'#C6F432':'#8a8f98',fontWeight:700,fontSize:13,animation:rups?'glowp 1.8s ease-in-out infinite':'none'}}>${rups?'¡Subes de rango!':'Sin cambios de rango'}</span></div>
      <div style=${{display:'grid',gap:8}}>${rgains.map(x=>html`<div key=${x.g} style=${{display:'flex',alignItems:'center',gap:10}}><${RankBadge} r=${x.r1} size=${26}/><div style=${{flex:1,minWidth:0,fontSize:14}}><b>${MUS[x.g]}</b> <span style=${{color:RANKS[x.r1.tier][1]}}>${rankName(x.r1)}</span>${x.up?html` <span style=${{color:'#C6F432',fontWeight:700,fontSize:12}}>↑ desde ${rankName(x.r0)}</span>`:''}</div></div>`)}</div>
@@ -868,6 +877,14 @@ function Summary({note,all,cfg,meas,close,onSave,dl}){
     <div className="space-y-2 pt-1"><button onClick=${()=>shut(onSave)} className="btn-w h-14 w-full">${dl?'Guardar entreno':'Guardar y preparar la próxima'}</button><button onClick=${()=>shut()} className="h-11 w-full mut">Cerrar sin guardar</button></div>
    </div>`}
   </div></div>`,document.body);
+}
+
+/* Contador de la barra de arriba del día: sale al marcar la primera serie. Se calcula con la hora de las series, así sigue contando con el móvil bloqueado o la app cerrada */
+function WorkTimer({note}){
+ const [,tick]=useState(0),sp=spanOf(note),now=Date.now(),ss=note.blocks.flatMap(b=>b.type==='exercise'?b.sets||[]:[]),live=!!sp&&!ss.every(s=>s.done)&&now-sp.b<=T_MAX;
+ useEffect(()=>{if(!live)return;const t=setInterval(()=>tick(x=>x+1),1000);return()=>clearInterval(t)},[live]);
+ if(!sp||(!live&&sp.b===sp.a))return null;
+ return html`<span role="timer" aria-label="Tiempo de entreno" className="num" style=${{color:live?'#C6F432':'#8a8f98',fontFamily:'var(--cond)',fontWeight:600,fontSize:20,lineHeight:1,whiteSpace:'nowrap'}}>${fmtClock((live?now:sp.b)-sp.a)}</span>`;
 }
 
 function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl,need,onRoutine}){
@@ -893,8 +910,8 @@ function Editor({note,all,cfg,meas,patch,onBack,onDup,onDel,dl,need,onRoutine}){
  return html`<div className="space-y-4 push-in">
   <div className="sticky z-10 -mx-4 px-4 py-2 flex items-center gap-2" style=${{top:0,marginTop:'calc(-1.5rem - env(safe-area-inset-top,0px))',paddingTop:'calc(env(safe-area-inset-top,0px) + .5rem)',background:'rgba(0,0,0,.92)',WebkitBackdropFilter:'blur(14px)',backdropFilter:'blur(14px)',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
    <${RB} ic="back" label="Volver" onClick=${onBack} cls="chip"/>
-   <div className="flex-1"></div>
-   ${Ch('Duplicar','copy',onDup)}${Ch('Desmarcar','redo',()=>{remember('Series desmarcadas');patch(n=>clear(clone(n)))})}
+   <div className="flex-1 min-w-0 flex justify-center"><${WorkTimer} note=${note}/></div>
+   ${Ch(document.documentElement.clientWidth<390&&spanOf(note)?'':'Duplicar','copy',onDup)}${Ch('Desmarcar','redo',()=>{remember('Series desmarcadas');patch(n=>clear(clone(n)))})}
    ${Ch(cd?'¿Seguro?':'','trash',()=>cd?onDel():(setCd(true),setTimeout(()=>setCd(false),3000)),cd?'!bg-red-500/90 !text-white':'')}
   </div>
   <input value=${note.title} onChange=${e=>patch(n=>({...n,title:e.target.value}))} placeholder="Nombre del día" className="w-full bg-transparent text-3xl font-bold outline-none"/>
@@ -2069,7 +2086,7 @@ function App(){
  const tagList=ft?notes.filter(n=>(n.tags||[]).includes(ft)).sort((a,b)=>dayKey(a)-dayKey(b)):[];
  const moveDay=(id,d)=>{const arr=tagList.map(n=>n.id),i=arr.indexOf(id),j=i+d;if(i<0||j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]];const o=new Map(arr.map((x,k)=>[x,k]));setNotes(ns=>ns.map(n=>o.has(n.id)?{...n,ord:o.get(n.id)}:n))};
  const info=n=>{const e=n.blocks.filter(b=>b.type==='exercise').length,s=n.blocks.flatMap(b=>b.sets||[]);return e?`${pl(e,'ejercicio')}, ${pl(s.length,'serie')}`:pl(n.blocks.length,'bloque')};
- const histTxt=n=>{const h=(n.hist||[]).filter(x=>!x.demo);return h.length?`Última vez ${ago(h[h.length-1].t)}, ${h.length} ${h.length===1?'sesión':'sesiones'}`:null};
+ const histTxt=n=>{const h=(n.hist||[]).filter(x=>!x.demo);const du=h.length&&h[h.length-1].dur;return h.length?`Última vez ${ago(h[h.length-1].t)}, ${h.length} ${h.length===1?'sesión':'sesiones'}${du>=6e4?' · '+fmtDur(du):''}`:null};
  const inProg=n=>{const s=n.blocks.flatMap(b=>b.sets||[]),d=s.filter(x=>x.done).length;return d?`${d}/${s.length}`:null};
  const today=day0(Date.now());
  const days=Array.from({length:30},(_,k)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(29-k));return d.getTime()});
